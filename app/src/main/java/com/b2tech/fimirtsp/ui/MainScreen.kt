@@ -48,6 +48,7 @@ import com.b2tech.fimirtsp.settings.RtspTransport
 import com.b2tech.fimirtsp.settings.StreamSettings
 import com.b2tech.fimirtsp.settings.VideoResolution
 import com.b2tech.fimirtsp.streaming.StreamState
+import com.b2tech.fimirtsp.validation.StreamUrlValidator
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -168,7 +169,10 @@ private fun StatusCard(
                     Text("Bitrate agora: ${bitrateBps / 1000} kbps")
                 }
                 is StreamState.Reconnecting -> Text("Próxima tentativa em ${state.nextDelayMs / 1000}s")
-                is StreamState.Error -> Text("Toque em Iniciar transmissão para tentar de novo.")
+                is StreamState.Error -> {
+                    Text(state.message, style = MaterialTheme.typography.bodyMedium)
+                    Text("Toque em Autorizar captura e iniciar para tentar de novo.", style = MaterialTheme.typography.bodySmall)
+                }
                 else -> Unit
             }
             Text("Rede: $connectivityLabel", style = MaterialTheme.typography.bodySmall)
@@ -190,7 +194,8 @@ private fun ServerCard(
     enabled: Boolean,
 ) {
     var showPassword by remember { mutableStateOf(false) }
-    SectionCard(title = "Servidor RTSP") {
+    val family = StreamUrlValidator.validate(settings.serverUrl).family
+    SectionCard(title = "Servidor de destino (RTSP ou RTMP)") {
         OutlinedTextField(
             value = settings.serverUrl,
             onValueChange = onUrlChange,
@@ -199,7 +204,10 @@ private fun ServerCard(
             placeholder = { Text("rtsp://192.168.1.100:8554/fimi") },
             isError = urlError != null && settings.serverUrl.isNotEmpty(),
             supportingText = {
-                Text(urlError ?: "Ex.: rtsp://IP:8554/fimi ou rtsps://host/caminho")
+                Text(
+                    urlError
+                        ?: "Ex.: rtsp://IP:8554/fimi  ou  rtmp://servidor:1935/live/ID?key=..."
+                )
             },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
@@ -228,19 +236,28 @@ private fun ServerCard(
             },
             modifier = Modifier.fillMaxWidth(),
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(
-                selected = settings.transport == RtspTransport.TCP,
-                onClick = { onTransportChange(RtspTransport.TCP) },
-                enabled = enabled,
-                label = { Text("TCP (padrão)") },
+        when (family) {
+            StreamUrlValidator.Family.RTMP -> Text(
+                "RTMP: transporte sempre TCP. Se o servidor exigir chave, ela vai na própria URL (?key=...).",
+                style = MaterialTheme.typography.bodySmall,
             )
-            FilterChip(
-                selected = settings.transport == RtspTransport.UDP,
-                onClick = { onTransportChange(RtspTransport.UDP) },
-                enabled = enabled,
-                label = { Text("UDP") },
-            )
+            else -> {
+                Text("Transporte RTSP", style = MaterialTheme.typography.labelLarge)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = settings.transport == RtspTransport.TCP,
+                        onClick = { onTransportChange(RtspTransport.TCP) },
+                        enabled = enabled,
+                        label = { Text("TCP (padrão)") },
+                    )
+                    FilterChip(
+                        selected = settings.transport == RtspTransport.UDP,
+                        onClick = { onTransportChange(RtspTransport.UDP) },
+                        enabled = enabled,
+                        label = { Text("UDP") },
+                    )
+                }
+            }
         }
     }
 }
@@ -368,11 +385,11 @@ private fun SecurityFooter() {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("Segurança", style = MaterialTheme.typography.labelLarge)
             Text(
-                "RTSP simples não é criptografado. Use VPN, rede privada ou RTSPS quando o servidor oferecer.",
+                "RTSP e RTMP simples não são criptografados. Use VPN, rede privada, rtsps:// ou rtmps:// quando o servidor oferecer.",
                 style = MaterialTheme.typography.bodySmall,
             )
             Text(
-                "Este app não controla o drone e não modifica o FIMI Navi. Ele só espelha a tela e publica em RTSP.",
+                "Este app não controla o drone e não modifica o FIMI Navi. Ele só espelha a tela e publica no servidor.",
                 style = MaterialTheme.typography.bodySmall,
             )
         }

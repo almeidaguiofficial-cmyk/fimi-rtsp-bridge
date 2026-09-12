@@ -65,7 +65,7 @@ class MainActivity : ComponentActivity() {
 
     private fun authorizeAndStart(urlIsValid: Boolean) {
         if (!urlIsValid) {
-            toast("Endereço RTSP inválido. Corrija antes de iniciar.")
+            toast("Endereço inválido. Use rtsp:// ou rtmp:// e corrija antes de iniciar.")
             return
         }
         viewModel.markAwaitingProjection(true)

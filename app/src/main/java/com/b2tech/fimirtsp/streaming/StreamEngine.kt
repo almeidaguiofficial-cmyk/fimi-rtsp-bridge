@@ -17,6 +17,8 @@ interface StreamEngine {
         fun onConnectionFailed(reason: String)
         fun onAuthError()
         fun onBitrateSample(bps: Long)
+        /** O sistema encerrou a MediaProjection (chip "Parar compartilhamento", revogação, bloqueio). */
+        fun onCaptureStopped()
     }
 
     data class PrepareRequest(
@@ -36,8 +38,17 @@ interface StreamEngine {
     /** Prepara vídeo + captura de tela; devolve a resolução que foi aceita. */
     fun prepare(request: PrepareRequest): PrepareResult
 
-    /** Publica no endpoint RTSP. Não bloqueia. */
-    fun startStream(endpoint: String)
+    /**
+     * Publica no endpoint (rtsp/rtsps/rtmp/rtmps). Não bloqueia na rede, mas sobe
+     * captura e encoders: devolve false (já desfeito) se algum deles falhar.
+     */
+    fun startStream(endpoint: String): Boolean
+
+    /**
+     * Pede à biblioteca que reconecte após [delayMs] mantendo encoder e captura vivos.
+     * Devolve false quando a lib recusa (ex.: endpoint malformado) — aí é erro fatal.
+     */
+    fun retry(delayMs: Long, reason: String): Boolean
 
     /** Encerra a transmissão. Idempotente. */
     fun stopStream()

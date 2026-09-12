@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.b2tech.fimirtsp.BuildConfig
 import com.b2tech.fimirtsp.FimiApp
 import com.b2tech.fimirtsp.network.Connectivity
 import com.b2tech.fimirtsp.network.ConnectivityMonitor
@@ -15,7 +16,7 @@ import com.b2tech.fimirtsp.settings.StreamSettings
 import com.b2tech.fimirtsp.settings.VideoResolution
 import com.b2tech.fimirtsp.streaming.StreamService
 import com.b2tech.fimirtsp.streaming.StreamState
-import com.b2tech.fimirtsp.validation.RtspUrlValidator
+import com.b2tech.fimirtsp.validation.StreamUrlValidator
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -57,7 +58,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     ) { settings, triple, conn, awaiting ->
         UiState(
             settings = settings,
-            urlError = RtspUrlValidator.validate(settings.serverUrl).error,
+            urlError = StreamUrlValidator.validate(settings.serverUrl).error,
             engineState = triple.first,
             connectivity = conn,
             bitrateSampleBps = triple.second,
@@ -69,7 +70,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = UiState(
             settings = StreamSettings(
-                serverUrl = "",
+                serverUrl = BuildConfig.DEFAULT_STREAM_URL,
                 rtspUser = "",
                 rtspPassword = "",
                 resolution = VideoResolution.R720P,
@@ -78,7 +79,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 transport = RtspTransport.TCP,
                 stopOnTaskRemoved = true,
             ),
-            urlError = "Endereço vazio",
+            urlError = StreamUrlValidator.validate(BuildConfig.DEFAULT_STREAM_URL).error,
             engineState = StreamState.Idle,
             connectivity = Connectivity(false, Connectivity.Transport.NONE),
             bitrateSampleBps = 0L,

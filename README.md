@@ -1,9 +1,10 @@
 # FIMI RTSP Bridge
 
 App Android que espelha a tela do celular durante o uso do **FIMI Navi 3.0** e
-publica o vídeo por **RTSP** para um servidor (MediaMTX, OBS Studio como cliente,
-NVR, etc.). Serve como ponte pra sacar do FIMI Navi um sinal ao vivo que outras
-ferramentas conseguem ler — VLC, OBS, câmeras IP virtuais, análise de vídeo.
+publica o vídeo por **RTSP ou RTMP** para um servidor (MediaMTX, Skywatch,
+OBS Studio como cliente, NVR, etc.). Serve como ponte pra sacar do FIMI Navi um
+sinal ao vivo que outras ferramentas conseguem ler — VLC, OBS, câmeras IP
+virtuais, análise de vídeo.
 
 Testado com o padrão de captura já em produção no Skywatch Cast (RootEncoder 2.8.1).
 
@@ -11,12 +12,17 @@ Testado com o padrão de captura já em produção no Skywatch Cast (RootEncoder
 
 - Pega a tela do celular (ou só a janela do FIMI Navi no Android 14+).
 - Codifica em **H.264 por hardware**, GOP de 1s, sem B-frames, sem áudio.
-- Publica em `rtsp://SERVIDOR:8554/fimi` (ou o path que você configurar).
+- Publica em `rtsp://SERVIDOR:8554/fimi` **ou** `rtmp://SERVIDOR:1935/live/ID?key=...`
+  (o app escolhe RTSP/RTMP pelo esquema da URL; `rtsps://` e `rtmps://` também valem).
 - Roda em **Foreground Service tipo mediaProjection**, notificação persistente
   com botão “Parar transmissão”.
-- Reconecta automaticamente com backoff 1s → 2s → 4s → 8s → 15s (saturado).
-- Suporta RTSP **TCP** (padrão) e **UDP**.
-- Aceita usuário/senha (Basic/Digest, o que a lib negociar com o servidor).
+- Reconecta automaticamente com backoff 1s → 2s → 4s → 8s → 15s (saturado),
+  mantendo encoder e captura vivos (`reTry` da RootEncoder) — sem pedir nova
+  autorização de captura a cada queda.
+- RTSP: transporte **TCP** (padrão) ou **UDP**. RTMP: sempre TCP.
+- Aceita usuário/senha (Basic/Digest no RTSP; auth RTMP, o que a lib negociar).
+- Sem áudio de verdade: o cliente é configurado como *only video*, então o servidor
+  não recebe uma faixa de áudio silenciosa (evita travar HLS no MediaMTX).
 - Valida a URL antes de iniciar; nunca escreve senha em log.
 
 ## O que ele NÃO faz
@@ -118,6 +124,21 @@ docker compose up -d
 8. Pra parar: use o botão do app **ou** a ação **Parar transmissão** da
    notificação persistente.
 
+## Usar com um servidor RTMP (ex.: Skywatch)
+
+1. No painel do servidor, copie a **URL completa de publicação** do drone —
+   normalmente no formato `rtmp://SEU-SERVIDOR:1935/live/<id-do-drone>?key=sk_...`.
+   Se o servidor valida a chave por webhook, o `?key=` **precisa** ir junto; sem ele
+   o servidor derruba a publicação logo depois do handshake (o app entra em
+   "Reconectando" em loop).
+2. Cole essa URL no campo **Endereço do servidor**. Os chips TCP/UDP somem: RTMP é
+   sempre TCP.
+3. Deixe usuário/senha vazios (a autenticação está na URL). Se o seu servidor usa
+   RTMP com usuário/senha (Basic/Digest), aí sim preencha os dois campos.
+4. **Autorizar captura e iniciar** → o vídeo aparece no player do servidor.
+5. Em rede corporativa com filtro de tráfego, prefira `rtmps://…:443/…` se o
+   servidor oferecer — TLS na porta 443 costuma passar onde 1935 é bloqueada.
+
 ## Diagnóstico de rede (USB + 4G/5G)
 
 Durante o uso normal:
@@ -164,12 +185,12 @@ app/
 │   ├── StreamService.kt              # Foreground Service mediaProjection
 │   ├── ProjectionController.kt       # Sessão do MediaProjection
 │   ├── StreamEngine.kt               # Contrato do motor
-│   ├── RootEncoderStreamEngine.kt    # Implementação com RootEncoder (pedroSG94)
+│   ├── RootEncoderStreamEngine.kt    # RootEncoder GenericStream (rtsp/rtsps/rtmp/rtmps)
 │   ├── StreamState.kt                # Máquina de estados
 │   └── Backoff.kt                    # 1,2,4,8,15s
 ├── network/ConnectivityMonitor.kt
 ├── settings/SettingsRepository.kt    # DataStore
-├── validation/RtspUrlValidator.kt
+├── validation/StreamUrlValidator.kt  # rtsp/rtsps/rtmp/rtmps
 └── util/{LogSanitizer,ScreenUtils}.kt
 ```
 
@@ -190,7 +211,7 @@ Qualquer estado → Stopping → Idle
 
 Cobrem:
 
-- `RtspUrlValidatorTest` — RTSP/RTSPS, IPv6, userinfo, portas, caminhos.
+- `StreamUrlValidatorTest` — RTSP/RTSPS/RTMP/RTMPS, `?key=`, IPv6, userinfo, portas, caminhos.
 - `BackoffTest` — 1, 2, 4, 8, 15s (saturado).
 - `StreamStateMachineTest` — transições esperadas e proibidas.
 - `LogSanitizerTest` — senha nunca vaza em log ou toast.

@@ -1,31 +1,43 @@
 package com.b2tech.fimirtsp.validation
 
 /**
- * Valida URLs RTSP/RTSPS para publicação. Aceita:
- *  - rtsp://host[:porta]/caminho
- *  - rtsps://host[:porta]/caminho
+ * Valida URLs de publicação. Aceita:
+ *  - rtsp://host[:porta]/caminho  e  rtsps://...
+ *  - rtmp://host[:porta]/app/chave[?key=...]  e  rtmps://...
  *  - userinfo (user:pass@) opcional — apesar de recomendarmos os campos separados
  *  - host IPv4, hostname ou colchetes IPv6
  *
  * Rejeita: URLs sem esquema, portas fora de 1..65535, caminho vazio.
  * Não faz DNS lookup: só valida a forma.
  */
-object RtspUrlValidator {
+object StreamUrlValidator {
 
-    data class Result(val ok: Boolean, val error: String? = null, val scheme: String? = null)
+    enum class Family { RTSP, RTMP }
 
-    private val ALLOWED_SCHEMES = setOf("rtsp", "rtsps")
+    data class Result(
+        val ok: Boolean,
+        val error: String? = null,
+        val scheme: String? = null,
+    ) {
+        val family: Family? get() = when (scheme) {
+            "rtsp", "rtsps" -> Family.RTSP
+            "rtmp", "rtmps" -> Family.RTMP
+            else -> null
+        }
+    }
+
+    private val ALLOWED_SCHEMES = setOf("rtsp", "rtsps", "rtmp", "rtmps")
 
     fun validate(input: String?): Result {
         val raw = input?.trim().orEmpty()
         if (raw.isEmpty()) return Result(false, "Endereço vazio")
 
         val schemeSep = raw.indexOf("://")
-        if (schemeSep <= 0) return Result(false, "Falta o esquema (rtsp:// ou rtsps://)")
+        if (schemeSep <= 0) return Result(false, "Falta o esquema (rtsp:// ou rtmp://)")
 
         val scheme = raw.substring(0, schemeSep).lowercase()
         if (scheme !in ALLOWED_SCHEMES) {
-            return Result(false, "Esquema não suportado: $scheme")
+            return Result(false, "Esquema não suportado: $scheme (use rtsp, rtsps, rtmp ou rtmps)")
         }
 
         val rest = raw.substring(schemeSep + 3)
@@ -63,7 +75,10 @@ object RtspUrlValidator {
             if (port !in 1..65535) return Result(false, "Porta fora do intervalo 1..65535")
         }
 
-        if (path.isBlank() || path == "/") return Result(false, "Falta o caminho após a porta")
+        val pathOnly = path.substringBefore('?')
+        if (pathOnly.isBlank() || pathOnly == "/") {
+            return Result(false, "Falta o caminho após o host (ex.: /fimi ou /live/ID)")
+        }
 
         return Result(true, scheme = scheme)
     }

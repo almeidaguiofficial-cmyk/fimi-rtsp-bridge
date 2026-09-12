@@ -47,6 +47,10 @@ jobs:
 
       - name: Build debug APK
         shell: bash
+        env:
+          # Secret opcional (Settings → Secrets → Actions): URL completa pré-preenchida
+          # no app, incluindo ?key=... — fica só dentro do APK, nunca no repositório.
+          DEFAULT_STREAM_URL: ${{ secrets.DEFAULT_STREAM_URL }}
         run: |
           set -o pipefail
           gradle assembleDebug --no-daemon --stacktrace 2>&1 | tee -a build.log

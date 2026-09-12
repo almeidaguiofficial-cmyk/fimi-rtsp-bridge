@@ -2,9 +2,9 @@
 <resources>
     <string name="app_name">FIMI RTSP Bridge</string>
 
-    <string name="section_server">Servidor RTSP</string>
+    <string name="section_server">Servidor de destino (RTSP ou RTMP)</string>
     <string name="label_url">Endereço do servidor</string>
-    <string name="hint_url">rtsp://192.168.1.100:8554/fimi</string>
+    <string name="hint_url">rtsp://192.168.1.100:8554/fimi ou rtmp://servidor:1935/live/ID</string>
     <string name="label_user">Usuário (opcional)</string>
     <string name="label_pass">Senha (opcional)</string>
 
@@ -40,5 +40,5 @@
 
     <string name="fimi_not_found">FIMI Navi não foi encontrado neste aparelho.</string>
 
-    <string name="warn_rtsp_plaintext">RTSP simples não é criptografado. Prefira VPN ou RTSPS quando disponível.</string>
+    <string name="warn_rtsp_plaintext">RTSP e RTMP simples não são criptografados. Prefira VPN, RTSPS ou RTMPS quando disponível.</string>
 </resources>

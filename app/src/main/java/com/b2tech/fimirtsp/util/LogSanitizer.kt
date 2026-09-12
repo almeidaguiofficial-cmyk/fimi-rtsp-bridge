@@ -9,8 +9,9 @@ object LogSanitizer {
 
     private val userInfoInUrl = Regex("""([A-Za-z][A-Za-z0-9+.\-]*://)[^/@\s]+@""")
     private val basicAuthHeader = Regex("""(?i)(Authorization:\s*Basic\s+)\S+""")
+    // "key" cobre a stream key em query string (?key=sk_...), que servidores RTMP usam como senha.
     private val genericPasswordKV =
-        Regex("""(?i)((?:pass(?:word)?|senha|pwd|token|secret)\s*[:=]\s*)("[^"]+"|\S+)""")
+        Regex("""(?i)\b((?:pass(?:word)?|senha|pwd|token|secret|key)\s*[:=]\s*)("[^"]+"|[^\s&"]+)""")
 
     fun sanitize(input: String?): String {
         if (input.isNullOrEmpty()) return ""

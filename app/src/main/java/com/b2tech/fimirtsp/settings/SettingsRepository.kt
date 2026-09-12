@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.b2tech.fimirtsp.BuildConfig
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -61,7 +62,8 @@ class SettingsRepository(private val context: Context) {
 
     val settings: Flow<StreamSettings> = context.dataStore.data.map { prefs ->
         StreamSettings(
-            serverUrl = prefs[Keys.URL].orEmpty(),
+            // null = nunca salvo → pré-preenche com o default do build; "" = usuário limpou.
+            serverUrl = prefs[Keys.URL] ?: BuildConfig.DEFAULT_STREAM_URL,
             rtspUser = prefs[Keys.USER].orEmpty(),
             rtspPassword = prefs[Keys.PASS].orEmpty(),
             resolution = VideoResolution.fromName(prefs[Keys.RES]),
@@ -81,7 +83,7 @@ class SettingsRepository(private val context: Context) {
     suspend fun update(transform: (StreamSettings) -> StreamSettings) {
         context.dataStore.edit { prefs ->
             val current = StreamSettings(
-                serverUrl = prefs[Keys.URL].orEmpty(),
+                serverUrl = prefs[Keys.URL] ?: BuildConfig.DEFAULT_STREAM_URL,
                 rtspUser = prefs[Keys.USER].orEmpty(),
                 rtspPassword = prefs[Keys.PASS].orEmpty(),
                 resolution = VideoResolution.fromName(prefs[Keys.RES]),

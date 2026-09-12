@@ -14,21 +14,16 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.b2tech.fimirtsp.FimiApp
 import com.b2tech.fimirtsp.R
-import com.b2tech.fimirtsp.network.Connectivity
 import com.b2tech.fimirtsp.network.ConnectivityMonitor
-import com.b2tech.fimirtsp.settings.RtspTransport
 import com.b2tech.fimirtsp.settings.SettingsRepository
 import com.b2tech.fimirtsp.settings.StreamSettings
-import com.b2tech.fimirtsp.settings.VideoResolution
 import com.b2tech.fimirtsp.util.LogSanitizer
 import com.b2tech.fimirtsp.util.ScreenUtils
-import com.b2tech.fimirtsp.validation.RtspUrlValidator
+import com.b2tech.fimirtsp.validation.StreamUrlValidator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -51,6 +46,16 @@ class StreamService : Service(), StreamEngine.Listener {
         const val ACTION_STOP = "com.b2tech.fimirtsp.STOP"
         const val EXTRA_RESULT_CODE = "result_code"
         const val EXTRA_RESULT_DATA = "result_data"
+
+        /** Razões (RootEncoder) que não adianta reconectar — o servidor recusou de vez. */
+        private val FATAL_REASONS = listOf(
+            "access denied",
+            "Publish.BadName",
+            "Connect.Rejected",
+            "Publish.Failed",
+            "Unsupported protocol",
+            "Endpoint malformed",
+        )
 
         private val _state: MutableStateFlow<StreamState> = MutableStateFlow(StreamState.Idle)
         val state: StateFlow<StreamState> = _state.asStateFlow()
@@ -87,11 +92,9 @@ class StreamService : Service(), StreamEngine.Listener {
     private lateinit var engine: StreamEngine
     private lateinit var settingsRepo: SettingsRepository
     private lateinit var connectivity: ConnectivityMonitor
-    private var reconnectJob: Job? = null
-    private var manualStop = false
+    @Volatile private var manualStop = false
+    @Volatile private var retryPending = false
     private var streamingStartedAt = 0L
-    private var lastAppliedFps = 30
-    private var lastAppliedBitrate = 3_000_000
     private var stopOnTaskRemoved = true
 
     override fun onCreate() {
@@ -129,14 +132,25 @@ class StreamService : Service(), StreamEngine.Listener {
         }
 
         startForegroundNotification(getString(R.string.status_preparing))
+        // Sessão nova em cima de uma antiga (ex.: usuário autorizou de novo sem parar):
+        // fecha o ciclo anterior para a máquina de estados aceitar RequestAuthorize.
+        if (_state.value !is StreamState.Idle && _state.value !is StreamState.Error) {
+            manualStop = true
+            try { engine.stopStream() } catch (_: Throwable) {}
+            transition(StreamEvent.RequestStop)
+            transition(StreamEvent.StoppedCleanly)
+        }
+        manualStop = false
+        retryPending = false
+        transition(StreamEvent.RequestAuthorize)
         transition(StreamEvent.AuthorizationGranted)
 
         scope.launch {
             val settings = settingsRepo.settings.first()
             stopOnTaskRemoved = settings.stopOnTaskRemoved
-            val validation = RtspUrlValidator.validate(settings.serverUrl)
+            val validation = StreamUrlValidator.validate(settings.serverUrl)
             if (!validation.ok) {
-                _lastError.value = "URL RTSP inválida: ${validation.error}"
+                _lastError.value = "Endereço inválido: ${validation.error}"
                 transition(StreamEvent.PrepareFailure(_lastError.value!!))
                 stopForegroundAndSelf()
                 return@launch
@@ -174,13 +188,19 @@ class StreamService : Service(), StreamEngine.Listener {
         )
         when (val result = engine.prepare(request)) {
             is StreamEngine.PrepareResult.Ok -> {
-                lastAppliedFps = settings.fps
-                lastAppliedBitrate = settings.bitrateBps
                 transition(StreamEvent.PrepareSuccess)
                 startForegroundNotification(getString(R.string.status_connecting))
                 manualStop = false
                 _reconnectAttempts.value = 0
-                engine.startStream(settings.serverUrl)
+                if (!engine.startStream(settings.serverUrl)) {
+                    // startStream já desfez a captura e reportou a razão em _lastError.
+                    if (_lastError.value.isNullOrBlank()) {
+                        _lastError.value = "Não foi possível iniciar a captura/encoder"
+                    }
+                    manualStop = true
+                    transition(StreamEvent.FatalError(_lastError.value!!))
+                    stopForegroundAndSelf()
+                }
             }
             is StreamEngine.PrepareResult.Failed -> {
                 _lastError.value = LogSanitizer.sanitize(result.reason)
@@ -192,8 +212,6 @@ class StreamService : Service(), StreamEngine.Listener {
 
     private fun handleStopRequested() {
         manualStop = true
-        reconnectJob?.cancel()
-        reconnectJob = null
         transition(StreamEvent.RequestStop)
         try { engine.stopStream() } catch (t: Throwable) {
             Log.w(TAG, "stopStream falhou: ${LogSanitizer.sanitize(t.message)}")
@@ -223,20 +241,29 @@ class StreamService : Service(), StreamEngine.Listener {
 
     override fun onDestroy() {
         super.onDestroy()
-        reconnectJob?.cancel()
+        manualStop = true
+        engine.setListener(null)
         try { engine.release() } catch (_: Throwable) {}
+        // Callback atrasado da lib não pode deixar notificação "Parar" zumbi.
+        (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).cancel(NOTIF_ID)
         scope.cancel()
-        if (_state.value !is StreamState.Idle) transition(StreamEvent.StoppedCleanly)
+        if (_state.value !is StreamState.Idle && _state.value !is StreamState.Error) {
+            transition(StreamEvent.StoppedCleanly)
+        }
     }
 
-    // ---- StreamEngine.Listener ----
+    // ---- StreamEngine.Listener (chegam na thread da lib; StateFlow e
+    // NotificationManager são thread-safe, e manualStop cerca callbacks tardios) ----
 
     override fun onConnecting() {
-        // Sinal do próprio motor — mantém o serviço em Connecting.
+        if (manualStop) return
+        retryPending = false
         updateNotification(getString(R.string.status_connecting))
     }
 
     override fun onConnected(fps: Int, bitrateBps: Int) {
+        if (manualStop) return
+        retryPending = false
         streamingStartedAt = System.currentTimeMillis()
         _reconnectAttempts.value = 0
         transition(
@@ -257,35 +284,64 @@ class StreamService : Service(), StreamEngine.Listener {
     override fun onConnectionFailed(reason: String) {
         _lastError.value = LogSanitizer.sanitize(reason)
         if (manualStop) return
-        scheduleReconnect()
+        // A lib só recusa reTry para "Endpoint malformed"; recusas permanentes do servidor
+        // (403, BadName, Rejected...) voltariam true e virariam loop infinito de reconexão.
+        if (FATAL_REASONS.any { reason.contains(it, ignoreCase = true) }) {
+            failFatally("Servidor recusou a publicação: ${_lastError.value}")
+            return
+        }
+        scheduleReconnect(reason)
     }
 
     override fun onAuthError() {
-        _lastError.value = "Falha de autenticação RTSP. Confira usuário e senha."
+        // No RTMP a lib também cai aqui para qualquer _error do connect que não reconhece.
+        failFatally("Servidor recusou a conexão (autenticação, key na URL ou rota). Confira a URL e as credenciais.")
+    }
+
+    override fun onCaptureStopped() {
+        failFatally("Captura de tela encerrada pelo sistema. Autorize de novo para continuar.")
+    }
+
+    override fun onBitrateSample(bps: Long) {
+        if (manualStop) return
+        _statsBps.value = bps
+    }
+
+    private fun failFatally(message: String) {
+        if (manualStop) return
         manualStop = true
-        transition(StreamEvent.FatalError(_lastError.value!!))
+        _lastError.value = message
+        transition(StreamEvent.FatalError(message))
         try { engine.stopStream() } catch (_: Throwable) {}
         stopForegroundAndSelf()
     }
 
-    override fun onBitrateSample(bps: Long) {
-        _statsBps.value = bps
-    }
-
     // ---- reconnect ----
 
-    private fun scheduleReconnect() {
-        reconnectJob?.cancel()
-        reconnectJob = scope.launch {
-            val attempt = _reconnectAttempts.value + 1
-            _reconnectAttempts.value = attempt
-            val delayMs = Backoff.delayMs(attempt)
-            transition(StreamEvent.ConnectionFailure(attempt = attempt, nextDelayMs = delayMs))
-            updateNotification("${getString(R.string.status_reconnecting)} #$attempt")
-            delay(delayMs)
-            if (manualStop) return@launch
-            val settings = settingsRepo.settings.first()
-            engine.startStream(settings.serverUrl)
+    /**
+     * Chamado na thread da biblioteca. O reTry da RootEncoder mantém encoder e captura
+     * vivos, espera [delayMs] e reconecta o socket; startStream de novo lançaria
+     * IllegalStateException ("Stream already started").
+     */
+    private fun scheduleReconnect(reason: String) {
+        // A lib pode entregar dois onConnectionFailed para a mesma queda (leitor + sender);
+        // dois reTry concorrentes agendariam dois reconnects no mesmo socket.
+        if (retryPending) return
+        retryPending = true
+        val attempt = _reconnectAttempts.value + 1
+        _reconnectAttempts.value = attempt
+        val delayMs = Backoff.delayMs(attempt)
+        transition(StreamEvent.ConnectionFailure(attempt = attempt, nextDelayMs = delayMs))
+        updateNotification("${getString(R.string.status_reconnecting)} #$attempt")
+        val willRetry = try {
+            engine.retry(delayMs, reason)
+        } catch (t: Throwable) {
+            Log.w(TAG, "retry falhou: ${LogSanitizer.sanitize(t.message)}")
+            false
+        }
+        if (!willRetry) {
+            retryPending = false
+            failFatally("Servidor recusou a reconexão: ${LogSanitizer.sanitize(reason)}")
         }
     }
 

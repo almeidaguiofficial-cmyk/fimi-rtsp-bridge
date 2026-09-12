@@ -18,6 +18,15 @@ android {
         versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // URL pré-preenchida no primeiro uso. Vem de -PDEFAULT_STREAM_URL=... ou da env
+        // DEFAULT_STREAM_URL (secret do GitHub Actions) — nunca do código, porque a
+        // stream key na URL é credencial e o repositório é público.
+        val defaultStreamUrl = (project.findProperty("DEFAULT_STREAM_URL") as String?)
+            ?: System.getenv("DEFAULT_STREAM_URL")
+            ?: ""
+        val escaped = defaultStreamUrl.replace("\\", "\\\\").replace("\"", "\\\"")
+        buildConfigField("String", "DEFAULT_STREAM_URL", "\"$escaped\"")
     }
 
     buildFeatures {

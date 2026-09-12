@@ -31,6 +31,14 @@ class LogSanitizerTest {
         listOf("hunter2", "abc", "xyzzy", "\"y\"").forEach { assertFalse(out.contains(it)) }
     }
 
+    @Test fun mascara_stream_key_na_query_da_url_rtmp() {
+        val out = LogSanitizer.sanitize(
+            "Endpoint malformed rtmp://media.exemplo.com:1935/live/9ea2113a?key=sk_PgLwABC123&x=1"
+        )
+        assertFalse(out.contains("sk_PgLwABC123"))
+        assertTrue(out.contains("/live/9ea2113a?key=***&x=1"))
+    }
+
     @Test fun devolve_vazio_pra_nulo() {
         assertEquals("", LogSanitizer.sanitize(null))
     }
