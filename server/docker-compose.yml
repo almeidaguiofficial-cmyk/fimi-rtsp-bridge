@@ -1,0 +1,20 @@
+services:
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    restart: unless-stopped
+    container_name: fimi-mediamtx
+    ports:
+      # RTSP publicação e leitura
+      - "8554:8554"
+      # RTSPS (RTSP com TLS) — descomente e forneça certificado para usar
+      # - "8322:8322"
+      # WebRTC (WHIP/WHEP) — permite abrir a stream direto no navegador
+      - "8889:8889"
+      - "8189:8189/udp"
+      # HLS
+      - "8888:8888"
+      # API interna (métrica/observação; NÃO exponha na internet)
+      - "127.0.0.1:9997:9997"
+    volumes:
+      - ./mediamtx.yml:/mediamtx.yml:ro
+    # Rede em modo host é opcional; usamos bridge por padrão para portabilidade.

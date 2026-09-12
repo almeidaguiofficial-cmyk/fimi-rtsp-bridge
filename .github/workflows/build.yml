@@ -1,0 +1,82 @@
+name: build-apk
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK packages
+        run: |
+          yes | sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Unit tests
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle testDebugUnitTest --no-daemon --stacktrace 2>&1 | tee build.log
+
+      - name: Lint
+        shell: bash
+        continue-on-error: true
+        run: |
+          gradle lintDebug --no-daemon 2>&1 | tee -a build.log
+
+      - name: Build debug APK
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle assembleDebug --no-daemon --stacktrace 2>&1 | tee -a build.log
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: buildlog
+          name: build log (debug)
+          files: build.log
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: app/build/reports/
+          if-no-files-found: ignore
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fimi-rtsp-bridge-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Publish to "latest" release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: FIMI RTSP Bridge (última build)
+          files: app/build/outputs/apk/debug/app-debug.apk

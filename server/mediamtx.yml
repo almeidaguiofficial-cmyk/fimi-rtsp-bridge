@@ -1,0 +1,46 @@
+# mediamtx.yml — configuração mínima para receber a publicação do FIMI RTSP Bridge.
+# Ajuste as credenciais antes de expor em qualquer rede não confiável.
+logLevel: info
+readTimeout: 15s
+writeTimeout: 15s
+
+# --- RTSP ---
+rtspAddress: :8554
+rtspTransports: [tcp, udp]
+
+# --- WebRTC (opcional) ---
+webrtcAddress: :8889
+webrtcAllowOrigin: '*'
+webrtcICEUDPMuxAddress: :8189/udp
+
+# --- HLS (opcional) ---
+hlsAddress: :8888
+
+# --- API interna ---
+api: yes
+apiAddress: 127.0.0.1:9997
+
+# --- Autenticação em modo interno ---
+# Coloque publisher/reader com senhas reais antes de usar em produção.
+authMethod: internal
+authInternalUsers:
+  - user: publisher
+    pass: EscolhaUmaSenhaForte
+    ips: []
+    permissions:
+      - action: publish
+        path: fimi
+  - user: reader
+    pass: EscolhaOutraSenhaForte
+    ips: []
+    permissions:
+      - action: read
+        path: fimi
+
+# --- Caminhos ---
+paths:
+  fimi:
+    # Sem source: o path é criado quando o app publica.
+    source: publisher
+    # Reencaminhar para outros protocolos automaticamente.
+    hlsAlwaysRemux: yes
