@@ -6,6 +6,12 @@ OBS Studio como cliente, NVR, etc.). Serve como ponte pra sacar do FIMI Navi um
 sinal ao vivo que outras ferramentas conseguem ler — VLC, OBS, câmeras IP
 virtuais, análise de vídeo.
 
+Como a ponte captura a **tela** (e não o protocolo de vídeo do drone), ela é
+**agnóstica ao modelo**: funciona com qualquer drone cujo app de controle seja o
+FIMI Navi 3.0 — incluindo o **FIMI X8 Tele Max**, o X8 Tele e o X8 Pro
+(`com.fimi.app.x8p`). O Live por RTMP já está incluído: é só colar uma URL
+`rtmp://…` no campo de endereço.
+
 Testado com o padrão de captura já em produção no Skywatch Cast (RootEncoder 2.8.1).
 
 ## O que ele faz
@@ -40,7 +46,9 @@ Testado com o padrão de captura já em produção no Skywatch Cast (RootEncoder
 - Android 9 (API 28) ou superior — o app tira melhor proveito do Android 14+,
   que deixa você escolher apenas a janela do FIMI Navi na tela de consentimento
   do MediaProjection.
-- FIMI Navi 3.0 instalado e funcional com o drone/controle.
+- FIMI Navi 3.0 (`com.fimi.app.x8p`) instalado e funcional com o drone/controle.
+  É o app do **X8 Tele Max**, X8 Tele e X8 Pro. O botão "Abrir FIMI Navi"
+  reconhece esse pacote direto (e também apps FIMI detectados pelo nome visível).
 - Servidor RTSP alcançável — recomendamos rodar o MediaMTX do `server/`.
 
 ## Como compilar
@@ -179,7 +187,7 @@ app/
 │   ├── MainActivity.kt               # Activity + ActivityResult (MediaProjection)
 │   ├── MainScreen.kt                 # Tela Compose Material 3
 │   ├── MainViewModel.kt              # StateFlow<UiState>, StateFlow do serviço
-│   ├── FimiLauncher.kt               # Busca FIMI Navi entre pacotes
+│   ├── FimiLauncher.kt               # Acha o FIMI Navi: pacote conhecido (x8p) + nome visível
 │   └── theme/Theme.kt                # Material 3 dinâmico + light/dark
 ├── streaming/
 │   ├── StreamService.kt              # Foreground Service mediaProjection
@@ -216,6 +224,7 @@ Cobrem:
 - `StreamStateMachineTest` — transições esperadas e proibidas.
 - `LogSanitizerTest` — senha nunca vaza em log ou toast.
 - `BitrateBoundsTest` — clamp de bitrate 300 kbps..20 Mbps.
+- `FimiLauncherTest` — detecção do FIMI Navi 3.0 (X8 Tele Max, `com.fimi.app.x8p`) por pacote e por nome visível.
 
 ## Segurança
 
