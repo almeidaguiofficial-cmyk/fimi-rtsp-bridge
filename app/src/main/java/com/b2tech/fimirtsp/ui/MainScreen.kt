@@ -344,7 +344,7 @@ private fun ActionsCard(
         }
         if (!fimiFound) {
             Text(
-                "Não encontrei o FIMI Navi instalado. Instale-o pela Play Store ou APK oficial e volte aqui.",
+                "Não encontrei o FIMI Navi 3.0 (app do X8 Tele Max) instalado. Instale-o pela Play Store ou APK oficial e volte aqui.",
                 style = MaterialTheme.typography.bodySmall,
             )
         }

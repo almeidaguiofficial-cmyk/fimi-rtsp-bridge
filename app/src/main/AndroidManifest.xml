@@ -10,11 +10,16 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <!--
-      Precisamos enxergar o pacote do FIMI Navi (queryable) para o botão "Abrir FIMI Navi".
-      Sem QUERY_ALL_PACKAGES: buscamos aplicativos com categoria LAUNCHER e filtramos pelo
+      Precisamos enxergar o pacote do app FIMI (queryable) para o botão "Abrir FIMI Navi".
+      Sem QUERY_ALL_PACKAGES: declaramos os applicationId oficiais da FIMI (visibilidade
+      direta) e, como fallback, buscamos aplicativos com categoria LAUNCHER filtrando pelo
       nome visível "FIMI Navi", respeitando o package visibility do Android 11+.
     -->
     <queries>
+        <!-- FIMI Navi 3.0: X8 Pro / X8 Tele / X8 Tele Max -->
+        <package android:name="com.fimi.app.x8p" />
+        <!-- FIMI Navi: família X8 SE -->
+        <package android:name="com.fimi.app.x8s" />
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />

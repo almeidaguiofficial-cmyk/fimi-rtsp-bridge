@@ -38,7 +38,7 @@
     <string name="warn_older_android">Neste Android, a captura pega a tela inteira. Coloque o FIMI Navi em primeiro plano.</string>
     <string name="hint_android14">A partir do Android 14 você pode escolher só a janela do FIMI Navi.</string>
 
-    <string name="fimi_not_found">FIMI Navi não foi encontrado neste aparelho.</string>
+    <string name="fimi_not_found">FIMI Navi 3.0 (app do X8 Tele Max) não foi encontrado neste aparelho.</string>
 
     <string name="warn_rtsp_plaintext">RTSP e RTMP simples não são criptografados. Prefira VPN, RTSPS ou RTMPS quando disponível.</string>
 </resources>
