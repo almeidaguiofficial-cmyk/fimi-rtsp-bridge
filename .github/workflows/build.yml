@@ -3,6 +3,9 @@ name: build-apk
 on:
   push:
     branches: [ main ]
+  # Valida PRs (testes + lint + APK como artifact); releases só no push pra main.
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
 
 permissions:
@@ -56,7 +59,7 @@ jobs:
           gradle assembleDebug --no-daemon --stacktrace 2>&1 | tee -a build.log
 
       - name: Upload build log on failure
-        if: failure()
+        if: failure() && github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: buildlog
@@ -79,6 +82,7 @@ jobs:
           if-no-files-found: error
 
       - name: Publish to "latest" release
+        if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
