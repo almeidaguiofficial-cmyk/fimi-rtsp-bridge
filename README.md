@@ -21,6 +21,9 @@ Testado com o padrão de captura já em produção no Skywatch Cast (RootEncoder
   autorização de captura a cada queda.
 - RTSP: transporte **TCP** (padrão) ou **UDP**. RTMP: sempre TCP.
 - Aceita usuário/senha (Basic/Digest no RTSP; auth RTMP, o que a lib negociar).
+- **Aba Assistir**: o mesmo APK também é player — em outro celular na rede,
+  reproduz o stream via `rtsp://` ou `rtmp://` com Media3/ExoPlayer, buffers
+  curtos (baixa latência) e reconexão automática com o mesmo backoff.
 - Sem áudio de verdade: o cliente é configurado como *only video*, então o servidor
   não recebe uma faixa de áudio silenciosa (evita travar HLS no MediaMTX).
 - Valida a URL antes de iniciar; nunca escreve senha em log.
@@ -124,6 +127,29 @@ docker compose up -d
 8. Pra parar: use o botão do app **ou** a ação **Parar transmissão** da
    notificação persistente.
 
+## Assistir no próprio app (aba Assistir)
+
+Instale o mesmo APK num segundo celular/tablet na mesma rede e abra a aba
+**Assistir**:
+
+1. Informe o endereço da transmissão:
+   - RTSP (recomendado na LAN — atraso ~0,5–1 s):
+     `rtsp://reader:SENHA@IP_DO_SERVIDOR:8554/fimi`
+   - RTMP (atraso típico 1–3 s; credencial vai na **query**, não em `user:pass@`):
+     `rtmp://IP_DO_SERVIDOR:1935/fimi?user=reader&pass=SENHA`
+2. Toque em **Assistir**. O vídeo abre no player embutido (Media3/ExoPlayer,
+   buffers curtos, sem controles de seek — é ao vivo).
+3. Com **Reconectar automaticamente** ligado (padrão), o player fica tentando
+   com backoff 1→2→4→8→15 s enquanto o feed não sobe, e religa sozinho se a
+   transmissão cair e voltar — útil pra deixar o tablet como monitor de voo.
+4. A tela fica acesa enquanto reproduz. Trocar de aba ou minimizar o app para
+   e libera o player (não há reprodução em background).
+
+O reprodutor **não** suporta `rtsps://`/`rtmps://` (limitação das extensões
+RTSP/RTMP do Media3) — fora da LAN, use VPN. O RTMP usa o librtmp via
+`media3-datasource-rtmp`; se a biblioteca nativa não carregar no seu aparelho
+(kernels com páginas de 16 KB), o app avisa e o caminho é usar `rtsp://`.
+
 ## Usar com um servidor RTMP (ex.: Skywatch)
 
 1. No painel do servidor, copie a **URL completa de publicação** do drone —
@@ -177,8 +203,11 @@ app/
 ├── FimiApp.kt                        # Application; expõe SettingsRepository
 ├── ui/
 │   ├── MainActivity.kt               # Activity + ActivityResult (MediaProjection)
-│   ├── MainScreen.kt                 # Tela Compose Material 3
+│   ├── AppRoot.kt                    # Abas Transmitir/Assistir (NavigationBar)
+│   ├── MainScreen.kt                 # Aba Transmitir (Compose Material 3)
 │   ├── MainViewModel.kt              # StateFlow<UiState>, StateFlow do serviço
+│   ├── PlayerScreen.kt               # Aba Assistir (PlayerView + status)
+│   ├── PlayerViewModel.kt            # Dono do ExoPlayer; reconexão com Backoff
 │   ├── FimiLauncher.kt               # Busca FIMI Navi entre pacotes
 │   └── theme/Theme.kt                # Material 3 dinâmico + light/dark
 ├── streaming/
@@ -186,11 +215,15 @@ app/
 │   ├── ProjectionController.kt       # Sessão do MediaProjection
 │   ├── StreamEngine.kt               # Contrato do motor
 │   ├── RootEncoderStreamEngine.kt    # RootEncoder GenericStream (rtsp/rtsps/rtmp/rtmps)
-│   ├── StreamState.kt                # Máquina de estados
-│   └── Backoff.kt                    # 1,2,4,8,15s
+│   ├── StreamState.kt                # Máquina de estados (publicador)
+│   └── Backoff.kt                    # 1,2,4,8,15s (compartilhado com o player)
+├── player/
+│   ├── PlayerState.kt                # Máquina de estados do reprodutor
+│   ├── PlayerErrorClassifier.kt      # RETRY/RETRY_IMMEDIATE/FATAL por errorCode
+│   └── PlayerMediaSources.kt         # rtmp→Progressive/FLV, rtsp→RTSP TCP
 ├── network/ConnectivityMonitor.kt
 ├── settings/SettingsRepository.kt    # DataStore
-├── validation/StreamUrlValidator.kt  # rtsp/rtsps/rtmp/rtmps
+├── validation/StreamUrlValidator.kt  # rtsp/rtsps/rtmp/rtmps (+ restrição do player)
 └── util/{LogSanitizer,ScreenUtils}.kt
 ```
 
@@ -211,10 +244,13 @@ Qualquer estado → Stopping → Idle
 
 Cobrem:
 
-- `StreamUrlValidatorTest` — RTSP/RTSPS/RTMP/RTMPS, `?key=`, IPv6, userinfo, portas, caminhos.
+- `StreamUrlValidatorTest` — RTSP/RTSPS/RTMP/RTMPS, `?key=`, IPv6, userinfo, portas,
+  caminhos; restrição do player a rtsp/rtmp sem afetar o publicador.
 - `BackoffTest` — 1, 2, 4, 8, 15s (saturado).
-- `StreamStateMachineTest` — transições esperadas e proibidas.
-- `LogSanitizerTest` — senha nunca vaza em log ou toast.
+- `StreamStateMachineTest` — transições esperadas e proibidas (publicador).
+- `PlayerStateMachineTest` — transições esperadas e proibidas (reprodutor).
+- `PlayerErrorClassifierTest` — retry vs. fatal por código de erro do Media3.
+- `LogSanitizerTest` — senha nunca vaza em log ou toast (inclui `?pass=` do RTMP).
 - `BitrateBoundsTest` — clamp de bitrate 300 kbps..20 Mbps.
 
 ## Segurança
@@ -232,4 +268,6 @@ Cobrem:
 
 - [RootEncoder](https://github.com/pedroSG94/RootEncoder) — pipeline de
   encoder/streaming.
-- [MediaMTX](https://github.com/bluenviron/mediamtx) — servidor RTSP/RTSPS/HLS/WebRTC.
+- [Media3/ExoPlayer](https://github.com/androidx/media) — reprodutor da aba
+  Assistir (módulos `exoplayer`, `exoplayer-rtsp`, `datasource-rtmp`, `ui`).
+- [MediaMTX](https://github.com/bluenviron/mediamtx) — servidor RTSP/RTSPS/RTMP/HLS/WebRTC.
