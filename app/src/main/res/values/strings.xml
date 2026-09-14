@@ -2,6 +2,9 @@
 <resources>
     <string name="app_name">FIMI RTSP Bridge</string>
 
+    <string name="tab_transmit">Transmitir</string>
+    <string name="tab_watch">Assistir</string>
+
     <string name="section_server">Servidor de destino (RTSP ou RTMP)</string>
     <string name="label_url">Endereço do servidor</string>
     <string name="hint_url">rtsp://192.168.1.100:8554/fimi ou rtmp://servidor:1935/live/ID</string>

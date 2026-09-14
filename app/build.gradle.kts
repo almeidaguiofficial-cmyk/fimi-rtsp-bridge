@@ -88,6 +88,16 @@ dependencies {
     // RootEncoder (pedroSG94): encoder RTSP/RTMP com captura de tela por MediaProjection.
     implementation("com.github.pedroSG94.RootEncoder:library:2.8.1")
 
+    // Media3/ExoPlayer: reprodutor da aba "Assistir" (rtsp:// e rtmp://).
+    // 1.8.0 é a última linha compilada contra SDK 35 — 1.9+ exige compileSdk 36,
+    // que o AGP 8.7.2 não aceita. Suba a versão junto com compileSdk/AGP.
+    val media3 = "1.8.0"
+    implementation("androidx.media3:media3-exoplayer:$media3")
+    implementation("androidx.media3:media3-exoplayer-rtsp:$media3")
+    // RTMP via librtmp (arrasta io.antmedia:rtmp-client do Maven Central). Sem rtmps.
+    implementation("androidx.media3:media3-datasource-rtmp:$media3")
+    implementation("androidx.media3:media3-ui:$media3")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     testImplementation("junit:junit:4.13.2")
