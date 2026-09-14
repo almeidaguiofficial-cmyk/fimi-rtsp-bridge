@@ -33,6 +33,10 @@ data class StreamSettings(
     val bitrateBps: Int,
     val transport: RtspTransport,
     val stopOnTaskRemoved: Boolean,
+    // Aba Assistir. Default vazio de propósito: DEFAULT_STREAM_URL é credencial
+    // de publicação e não deve pré-preencher o reprodutor.
+    val playerUrl: String = "",
+    val playerAutoReconnect: Boolean = true,
 ) {
     companion object {
         const val MIN_BITRATE_BPS = 300_000
@@ -58,6 +62,8 @@ class SettingsRepository(private val context: Context) {
         val BITRATE = intPreferencesKey("bitrate_bps")
         val TRANSPORT = stringPreferencesKey("transport")
         val STOP_ON_TASK_REMOVED = booleanPreferencesKey("stop_on_task_removed")
+        val PLAYER_URL = stringPreferencesKey("player_url")
+        val PLAYER_AUTO_RECONNECT = booleanPreferencesKey("player_auto_reconnect")
     }
 
     val settings: Flow<StreamSettings> = context.dataStore.data.map { prefs ->
@@ -77,6 +83,8 @@ class SettingsRepository(private val context: Context) {
                 else -> RtspTransport.TCP
             },
             stopOnTaskRemoved = prefs[Keys.STOP_ON_TASK_REMOVED] ?: true,
+            playerUrl = prefs[Keys.PLAYER_URL].orEmpty(),
+            playerAutoReconnect = prefs[Keys.PLAYER_AUTO_RECONNECT] ?: true,
         )
     }
 
@@ -94,6 +102,8 @@ class SettingsRepository(private val context: Context) {
                     else -> RtspTransport.TCP
                 },
                 stopOnTaskRemoved = prefs[Keys.STOP_ON_TASK_REMOVED] ?: true,
+                playerUrl = prefs[Keys.PLAYER_URL].orEmpty(),
+                playerAutoReconnect = prefs[Keys.PLAYER_AUTO_RECONNECT] ?: true,
             )
             val next = transform(current)
             prefs[Keys.URL] = next.serverUrl
@@ -105,6 +115,8 @@ class SettingsRepository(private val context: Context) {
                 .coerceIn(StreamSettings.MIN_BITRATE_BPS, StreamSettings.MAX_BITRATE_BPS)
             prefs[Keys.TRANSPORT] = next.transport.name
             prefs[Keys.STOP_ON_TASK_REMOVED] = next.stopOnTaskRemoved
+            prefs[Keys.PLAYER_URL] = next.playerUrl
+            prefs[Keys.PLAYER_AUTO_RECONNECT] = next.playerAutoReconnect
         }
     }
 }

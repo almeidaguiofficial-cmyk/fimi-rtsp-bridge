@@ -16,6 +16,11 @@ webrtcICEUDPMuxAddress: :8189/udp
 # --- HLS (opcional) ---
 hlsAddress: :8888
 
+# --- RTMP ---
+# Leitura pela aba Assistir do app: rtmp://HOST:1935/fimi?user=reader&pass=...
+# (no RTMP as credenciais vão na query, não em user:pass@).
+rtmpAddress: :1935
+
 # --- API interna ---
 api: yes
 apiAddress: 127.0.0.1:9997

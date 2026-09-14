@@ -14,12 +14,15 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
 import com.b2tech.fimirtsp.streaming.ProjectionController
 import com.b2tech.fimirtsp.ui.theme.FimiTheme
 
 class MainActivity : ComponentActivity() {
 
     private val viewModel: MainViewModel by viewModels(factoryProducer = { MainViewModel.Factory })
+    private val playerViewModel: PlayerViewModel by viewModels(factoryProducer = { PlayerViewModel.Factory })
     private val projection by lazy { ProjectionController(applicationContext) }
 
     private val projectionLauncher = registerForActivityResult(
@@ -40,24 +43,50 @@ class MainActivity : ComponentActivity() {
 
         maybeRequestNotifPermission()
 
+        // App em background libera o player da aba Assistir — o vídeo é de
+        // monitoramento; não há reprodução em background (a transmissão do
+        // publicador continua normalmente no Foreground Service).
+        lifecycle.addObserver(object : DefaultLifecycleObserver {
+            override fun onStop(owner: LifecycleOwner) {
+                playerViewModel.stopAndRelease()
+            }
+        })
+
         setContent {
             FimiTheme {
-                val uiState by viewModel.state.collectAsState()
-                val candidates = remember { FimiLauncher.findCandidates(this@MainActivity) }
-                MainScreen(
-                    state = uiState,
-                    onUrlChange = viewModel::updateUrl,
-                    onUserChange = viewModel::updateUser,
-                    onPasswordChange = viewModel::updatePassword,
-                    onResolutionChange = viewModel::updateResolution,
-                    onFpsChange = viewModel::updateFps,
-                    onBitrateChange = viewModel::updateBitrateBps,
-                    onTransportChange = viewModel::updateTransport,
-                    onAuthorizeAndStart = { authorizeAndStart(uiState.urlIsValid) },
-                    onStop = { viewModel.stopStreaming(application) },
-                    onOpenFimi = { openFimi(candidates) },
-                    fimiFound = candidates.isNotEmpty(),
-                    olderAndroid = Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE,
+                AppRoot(
+                    transmitir = {
+                        val uiState by viewModel.state.collectAsState()
+                        val candidates = remember { FimiLauncher.findCandidates(this@MainActivity) }
+                        MainScreen(
+                            state = uiState,
+                            onUrlChange = viewModel::updateUrl,
+                            onUserChange = viewModel::updateUser,
+                            onPasswordChange = viewModel::updatePassword,
+                            onResolutionChange = viewModel::updateResolution,
+                            onFpsChange = viewModel::updateFps,
+                            onBitrateChange = viewModel::updateBitrateBps,
+                            onTransportChange = viewModel::updateTransport,
+                            onAuthorizeAndStart = { authorizeAndStart(uiState.urlIsValid) },
+                            onStop = { viewModel.stopStreaming(application) },
+                            onOpenFimi = { openFimi(candidates) },
+                            fimiFound = candidates.isNotEmpty(),
+                            olderAndroid = Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE,
+                        )
+                    },
+                    assistir = {
+                        val playerState by playerViewModel.state.collectAsState()
+                        val exoPlayer by playerViewModel.player.collectAsState()
+                        PlayerScreen(
+                            state = playerState,
+                            player = exoPlayer,
+                            onUrlChange = playerViewModel::updateUrl,
+                            onAutoReconnectChange = playerViewModel::updateAutoReconnect,
+                            onPlay = playerViewModel::play,
+                            onStop = playerViewModel::stopAndRelease,
+                            onRetryNow = playerViewModel::retryNow,
+                        )
+                    },
                 )
             }
         }

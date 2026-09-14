@@ -39,6 +39,19 @@ class LogSanitizerTest {
         assertTrue(out.contains("/live/9ea2113a?key=***&x=1"))
     }
 
+    @Test fun mascara_pass_na_query_da_url_rtmp_do_player() {
+        // A URL de leitura RTMP do MediaMTX leva a senha na query (?user=...&pass=...).
+        val out = LogSanitizer.sanitize("rtmp://192.168.1.100:1935/fimi?user=reader&pass=abc123")
+        assertFalse(out.contains("abc123"))
+        assertTrue(out.contains("pass=***"))
+    }
+
+    @Test fun mascara_userinfo_na_url_rtsp_do_player() {
+        val out = LogSanitizer.sanitize("Falha em rtsp://reader:s3nha@192.168.1.100:8554/fimi")
+        assertFalse(out.contains("s3nha"))
+        assertTrue(out.contains("rtsp://***@192.168.1.100:8554/fimi"))
+    }
+
     @Test fun devolve_vazio_pra_nulo() {
         assertEquals("", LogSanitizer.sanitize(null))
     }
