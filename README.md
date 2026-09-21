@@ -15,7 +15,10 @@ Testado com o padrão de captura já em produção no Skywatch Cast (RootEncoder
 - Publica em `rtsp://SERVIDOR:8554/fimi` **ou** `rtmp://SERVIDOR:1935/live/ID?key=...`
   (o app escolhe RTSP/RTMP pelo esquema da URL; `rtsps://` e `rtmps://` também valem).
 - Roda em **Foreground Service tipo mediaProjection**, notificação persistente
-  com botão “Parar transmissão”.
+  com botões **Vol −**, **Vol +** e “Parar transmissão”.
+- **Comando de volume**: sobe/desce o volume de mídia do aparelho por passo
+  configurável — pela tela, pelas teclas físicas e pela notificação (ver seção
+  própria abaixo).
 - Reconecta automaticamente com backoff 1s → 2s → 4s → 8s → 15s (saturado),
   mantendo encoder e captura vivos (`reTry` da RootEncoder) — sem pedir nova
   autorização de captura a cada queda.
@@ -34,6 +37,8 @@ Testado com o padrão de captura já em produção no Skywatch Cast (RootEncoder
 - Não bind‐eia o socket em nenhuma rede específica (mais adiante em
   “diagnóstico de rede”).
 - Não expõe portas na internet automaticamente.
+- O comando de volume **não** mexe no volume da transmissão: não existe faixa de
+  áudio no stream. Ele controla o alto-falante do celular.
 
 ## Requisitos
 
@@ -124,6 +129,34 @@ docker compose up -d
 8. Pra parar: use o botão do app **ou** a ação **Parar transmissão** da
    notificação persistente.
 
+## Comando de volume
+
+O comando mexe no **canal de mídia (`STREAM_MUSIC`) do celular** — o mesmo dos
+alertas sonoros do FIMI Navi. Não exige permissão nenhuma no manifesto e funciona
+com a transmissão parada ou rolando.
+
+Três formas de acionar, porque cada uma cobre um cenário:
+
+| Acionador | Onde funciona | Observação |
+|---|---|---|
+| Botões **+ / −** e slider do card “Comando de volume” | Tela do app | Slider só aplica ao soltar o dedo |
+| **Teclas físicas** de volume | Enquanto a tela do app está na frente | Liga/desliga no switch do card |
+| Ações **Vol +** / **Vol −** da notificação | Qualquer lugar, com o FIMI Navi na frente | É o caminho durante o voo |
+
+Detalhes que importam:
+
+- O **passo** é percentual (5%, 10% ou 20% do máximo do aparelho) e nunca move
+  menos de 1 índice — em celular com escala curta (máximo 7) um passo de 10%
+  arredondaria pra zero e o botão não faria nada.
+- Com o FIMI Navi em primeiro plano, as teclas físicas voltam a ser do sistema:
+  quem recebe evento de tecla é o app em foco. Por isso a notificação tem os
+  botões — é o único acionador que funciona durante o voo.
+- A notificação ecoa o volume aplicado (`Transmitindo • Vol 60%`) e, quando o
+  sistema recusa (Não Perturbe, volume travado por dock/HDMI), mostra o motivo
+  no lugar.
+- O app **observa** o volume: mudanças feitas fora dele (painel do sistema, fone
+  Bluetooth) aparecem no card sem precisar reabrir a tela.
+
 ## Usar com um servidor RTMP (ex.: Skywatch)
 
 1. No painel do servidor, copie a **URL completa de publicação** do drone —
@@ -188,6 +221,9 @@ app/
 │   ├── RootEncoderStreamEngine.kt    # RootEncoder GenericStream (rtsp/rtsps/rtmp/rtmps)
 │   ├── StreamState.kt                # Máquina de estados
 │   └── Backoff.kt                    # 1,2,4,8,15s
+├── audio/
+│   ├── VolumeController.kt           # AudioManager (STREAM_MUSIC) + observa mudanças
+│   └── VolumeMath.kt                 # Passo/porcentagem ↔ índice (puro, testável)
 ├── network/ConnectivityMonitor.kt
 ├── settings/SettingsRepository.kt    # DataStore
 ├── validation/StreamUrlValidator.kt  # rtsp/rtsps/rtmp/rtmps
@@ -216,6 +252,7 @@ Cobrem:
 - `StreamStateMachineTest` — transições esperadas e proibidas.
 - `LogSanitizerTest` — senha nunca vaza em log ou toast.
 - `BitrateBoundsTest` — clamp de bitrate 300 kbps..20 Mbps.
+- `VolumeMathTest` — passo nunca zera, teto/piso, round-trip índice ↔ porcentagem.
 
 ## Segurança
 

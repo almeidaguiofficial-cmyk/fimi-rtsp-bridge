@@ -32,6 +32,17 @@
     <string name="notif_channel_name">FIMI RTSP Bridge</string>
     <string name="notif_title">Transmitindo por RTSP</string>
     <string name="notif_stop">Parar transmissão</string>
+    <string name="notif_volume_up">Vol +</string>
+    <string name="notif_volume_down">Vol −</string>
+    <string name="notif_volume_at">Vol %1$d%%</string>
+
+    <string name="section_volume">Comando de volume</string>
+    <string name="label_volume">Volume de mídia</string>
+    <string name="label_volume_step">Passo do comando</string>
+    <string name="label_volume_keys">Teclas físicas de volume</string>
+    <string name="hint_volume_keys">Com a tela do app na frente, as teclas de volume aplicam o passo configurado. Com o FIMI Navi na frente, use os botões Vol +/− da notificação.</string>
+    <string name="hint_volume_scope">Controla o alto-falante do aparelho (canal de mídia, o mesmo dos alertas do FIMI Navi). A transmissão continua só de vídeo: o servidor não recebe faixa de áudio.</string>
+    <string name="warn_volume_fixed">Este aparelho ou a saída de áudio atual não permite mudar o volume por software.</string>
 
     <string name="warn_no_network">Sem internet no celular. Verifique 4G/5G ou Wi-Fi.</string>
     <string name="warn_server_unreachable">Não consegui alcançar o servidor. Confira endereço e porta.</string>

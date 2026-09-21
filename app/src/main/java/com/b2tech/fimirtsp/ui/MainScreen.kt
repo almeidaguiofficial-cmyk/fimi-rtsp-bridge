@@ -14,6 +14,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.VolumeDown
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
@@ -30,6 +32,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -39,11 +42,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import com.b2tech.fimirtsp.R
+import com.b2tech.fimirtsp.audio.VolumeLevel
+import com.b2tech.fimirtsp.audio.VolumeMath
 import com.b2tech.fimirtsp.settings.RtspTransport
 import com.b2tech.fimirtsp.settings.StreamSettings
 import com.b2tech.fimirtsp.settings.VideoResolution
@@ -61,6 +68,11 @@ fun MainScreen(
     onFpsChange: (Int) -> Unit,
     onBitrateChange: (Int) -> Unit,
     onTransportChange: (RtspTransport) -> Unit,
+    onVolumeUp: () -> Unit,
+    onVolumeDown: () -> Unit,
+    onVolumePercent: (Int) -> Unit,
+    onVolumeStepChange: (Int) -> Unit,
+    onVolumeKeysToggle: (Boolean) -> Unit,
     onAuthorizeAndStart: () -> Unit,
     onStop: () -> Unit,
     onOpenFimi: () -> Unit,
@@ -111,6 +123,18 @@ fun MainScreen(
                 onFpsChange = onFpsChange,
                 onBitrateChange = onBitrateChange,
                 enabled = !busy,
+            )
+
+            VolumeCard(
+                level = state.volume,
+                notice = state.volumeNotice,
+                stepPercent = state.settings.volumeStepPercent,
+                keysEnabled = state.settings.volumeKeysEnabled,
+                onVolumeUp = onVolumeUp,
+                onVolumeDown = onVolumeDown,
+                onVolumePercent = onVolumePercent,
+                onVolumeStepChange = onVolumeStepChange,
+                onVolumeKeysToggle = onVolumeKeysToggle,
             )
 
             ActionsCard(
@@ -304,6 +328,89 @@ private fun EncodingCard(
             steps = 22,
             enabled = enabled,
         )
+    }
+}
+
+/**
+ * Comando de volume. Mexe no volume de mídia do aparelho — o canal dos alertas do
+ * FIMI Navi — e fica disponível mesmo com a transmissão parada.
+ */
+@Composable
+private fun VolumeCard(
+    level: VolumeLevel,
+    notice: String?,
+    stepPercent: Int,
+    keysEnabled: Boolean,
+    onVolumeUp: () -> Unit,
+    onVolumeDown: () -> Unit,
+    onVolumePercent: (Int) -> Unit,
+    onVolumeStepChange: (Int) -> Unit,
+    onVolumeKeysToggle: (Boolean) -> Unit,
+) {
+    // Enquanto o dedo arrasta, manda o valor local; só comita ao soltar, para não
+    // martelar o AudioManager a cada pixel.
+    var dragging by remember { mutableStateOf<Float?>(null) }
+    SectionCard(title = stringResource(R.string.section_volume)) {
+        Text(
+            "${stringResource(R.string.label_volume)}: ${level.percent}%",
+            style = MaterialTheme.typography.labelLarge,
+        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            IconButton(onClick = onVolumeDown, enabled = level.controllable) {
+                Icon(Icons.Filled.VolumeDown, contentDescription = "Diminuir volume")
+            }
+            Slider(
+                value = dragging ?: level.percent.toFloat(),
+                onValueChange = { dragging = it },
+                onValueChangeFinished = {
+                    dragging?.let { onVolumePercent(it.toInt()) }
+                    dragging = null
+                },
+                valueRange = 0f..100f,
+                enabled = level.controllable,
+                modifier = Modifier.weight(1f),
+            )
+            IconButton(onClick = onVolumeUp, enabled = level.controllable) {
+                Icon(Icons.Filled.VolumeUp, contentDescription = "Aumentar volume")
+            }
+        }
+        Text(
+            "${stringResource(R.string.label_volume_step)}: $stepPercent%",
+            style = MaterialTheme.typography.labelLarge,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(VolumeMath.MIN_STEP_PERCENT, VolumeMath.DEFAULT_STEP_PERCENT, 20).forEach { step ->
+                // Preferência do passo continua editável mesmo em aparelho de volume travado.
+                FilterChip(
+                    selected = stepPercent == step,
+                    onClick = { onVolumeStepChange(step) },
+                    label = { Text("$step%") },
+                )
+            }
+        }
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Switch(checked = keysEnabled, onCheckedChange = onVolumeKeysToggle)
+            Text(stringResource(R.string.label_volume_keys), style = MaterialTheme.typography.bodyMedium)
+        }
+        Text(stringResource(R.string.hint_volume_keys), style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(R.string.hint_volume_scope), style = MaterialTheme.typography.bodySmall)
+        if (!level.controllable) {
+            Text(
+                stringResource(R.string.warn_volume_fixed),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+        if (notice != null) {
+            Text(notice, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        }
     }
 }
 

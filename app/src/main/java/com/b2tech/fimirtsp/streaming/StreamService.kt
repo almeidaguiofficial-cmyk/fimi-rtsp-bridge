@@ -14,6 +14,8 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.b2tech.fimirtsp.FimiApp
 import com.b2tech.fimirtsp.R
+import com.b2tech.fimirtsp.audio.VolumeController
+import com.b2tech.fimirtsp.audio.VolumeOutcome
 import com.b2tech.fimirtsp.network.ConnectivityMonitor
 import com.b2tech.fimirtsp.settings.SettingsRepository
 import com.b2tech.fimirtsp.settings.StreamSettings
@@ -44,6 +46,8 @@ class StreamService : Service(), StreamEngine.Listener {
 
         const val ACTION_START = "com.b2tech.fimirtsp.START"
         const val ACTION_STOP = "com.b2tech.fimirtsp.STOP"
+        const val ACTION_VOLUME_UP = "com.b2tech.fimirtsp.VOLUME_UP"
+        const val ACTION_VOLUME_DOWN = "com.b2tech.fimirtsp.VOLUME_DOWN"
         const val EXTRA_RESULT_CODE = "result_code"
         const val EXTRA_RESULT_DATA = "result_data"
 
@@ -92,6 +96,9 @@ class StreamService : Service(), StreamEngine.Listener {
     private lateinit var engine: StreamEngine
     private lateinit var settingsRepo: SettingsRepository
     private lateinit var connectivity: ConnectivityMonitor
+    private lateinit var volume: VolumeController
+    /** Último texto de status, para o comando de volume não apagar "Transmitindo". */
+    @Volatile private var lastStatusText = ""
     @Volatile private var manualStop = false
     @Volatile private var retryPending = false
     private var streamingStartedAt = 0L
@@ -103,6 +110,7 @@ class StreamService : Service(), StreamEngine.Listener {
         engine.setListener(this)
         settingsRepo = (application as? FimiApp)?.settings ?: SettingsRepository(applicationContext)
         connectivity = ConnectivityMonitor(applicationContext)
+        volume = VolumeController(applicationContext)
         createChannel()
     }
 
@@ -112,6 +120,8 @@ class StreamService : Service(), StreamEngine.Listener {
         when (intent?.action) {
             ACTION_START -> handleStart(intent)
             ACTION_STOP -> handleStopRequested()
+            ACTION_VOLUME_UP -> handleVolumeCommand(up = true)
+            ACTION_VOLUME_DOWN -> handleVolumeCommand(up = false)
             else -> {
                 if (_state.value is StreamState.Idle) {
                     stopSelf()
@@ -218,6 +228,29 @@ class StreamService : Service(), StreamEngine.Listener {
         }
         transition(StreamEvent.StoppedCleanly)
         stopForegroundAndSelf()
+    }
+
+    /**
+     * Comando de volume disparado pelos botões da notificação — funciona com o FIMI Navi
+     * em primeiro plano, que é justamente quando as teclas do app não chegam.
+     * Mexe só no volume de mídia do aparelho: não toca na máquina de estados nem na captura.
+     */
+    private fun handleVolumeCommand(up: Boolean) {
+        scope.launch {
+            val step = settingsRepo.settings.first().volumeStepPercent
+            val outcome = if (up) volume.raise(step) else volume.lower(step)
+            if (_state.value is StreamState.Idle) {
+                // Notificação já saiu do ar (transmissão parada): nada a atualizar.
+                stopSelf()
+                return@launch
+            }
+            val status = lastStatusText.ifBlank { getString(R.string.status_streaming) }
+            val detail = when (outcome) {
+                is VolumeOutcome.Applied -> getString(R.string.notif_volume_at, outcome.level.percent)
+                is VolumeOutcome.Rejected -> outcome.reason
+            }
+            pushNotification("$status  •  $detail")
+        }
     }
 
     private fun stopForegroundAndSelf() {
@@ -382,12 +415,25 @@ class StreamService : Service(), StreamEngine.Listener {
             this, 1, stopIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+        val volDownPending = volumePendingIntent(ACTION_VOLUME_DOWN, requestCode = 2)
+        val volUpPending = volumePendingIntent(ACTION_VOLUME_UP, requestCode = 3)
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_upload)
             .setContentTitle(getString(R.string.notif_title))
             .setContentText(text)
             .setOngoing(true)
             .setSilent(true)
+            .addAction(
+                android.R.drawable.ic_lock_silent_mode,
+                getString(R.string.notif_volume_down),
+                volDownPending,
+            )
+            .addAction(
+                android.R.drawable.ic_lock_silent_mode_off,
+                getString(R.string.notif_volume_up),
+                volUpPending,
+            )
+            // "Parar" fica por último de propósito: é a ação destrutiva da notificação.
             .addAction(
                 android.R.drawable.ic_menu_close_clear_cancel,
                 getString(R.string.notif_stop),
@@ -396,7 +442,16 @@ class StreamService : Service(), StreamEngine.Listener {
             .build()
     }
 
+    private fun volumePendingIntent(volumeAction: String, requestCode: Int): PendingIntent {
+        val intent = Intent(this, StreamService::class.java).apply { action = volumeAction }
+        return PendingIntent.getService(
+            this, requestCode, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
+
     private fun startForegroundNotification(text: String) {
+        lastStatusText = text
         val n = buildNotification(text)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
@@ -406,6 +461,12 @@ class StreamService : Service(), StreamEngine.Listener {
     }
 
     private fun updateNotification(text: String) {
+        lastStatusText = text
+        pushNotification(text)
+    }
+
+    /** Publica um texto avulso (ex.: eco do volume) sem virar o status corrente. */
+    private fun pushNotification(text: String) {
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         nm.notify(NOTIF_ID, buildNotification(text))
     }

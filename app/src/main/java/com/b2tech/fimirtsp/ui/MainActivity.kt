@@ -5,6 +5,7 @@ import android.app.AlertDialog
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.view.KeyEvent
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -53,6 +54,11 @@ class MainActivity : ComponentActivity() {
                     onFpsChange = viewModel::updateFps,
                     onBitrateChange = viewModel::updateBitrateBps,
                     onTransportChange = viewModel::updateTransport,
+                    onVolumeUp = viewModel::raiseVolume,
+                    onVolumeDown = viewModel::lowerVolume,
+                    onVolumePercent = viewModel::setVolumePercent,
+                    onVolumeStepChange = viewModel::updateVolumeStepPercent,
+                    onVolumeKeysToggle = viewModel::updateVolumeKeysEnabled,
                     onAuthorizeAndStart = { authorizeAndStart(uiState.urlIsValid) },
                     onStop = { viewModel.stopStreaming(application) },
                     onOpenFimi = { openFimi(candidates) },
@@ -61,6 +67,28 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    /**
+     * Teclas físicas viram o comando de volume do app (passo configurável) enquanto esta
+     * tela está na frente. Com o FIMI Navi em primeiro plano quem manda é o sistema — aí
+     * o caminho são os botões Vol +/− da notificação da transmissão.
+     */
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (!interceptsVolumeKey(keyCode)) return super.onKeyDown(keyCode, event)
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) viewModel.raiseVolume() else viewModel.lowerVolume()
+        return true
+    }
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        // Consome o "soltar": sem isso o sistema ainda aplicaria o passo padrão dele por cima.
+        if (interceptsVolumeKey(keyCode)) return true
+        return super.onKeyUp(keyCode, event)
+    }
+
+    private fun interceptsVolumeKey(keyCode: Int): Boolean {
+        val isVolumeKey = keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN
+        return isVolumeKey && viewModel.volumeKeysEnabled()
     }
 
     private fun authorizeAndStart(urlIsValid: Boolean) {
