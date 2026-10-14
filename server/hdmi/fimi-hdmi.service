@@ -1,0 +1,20 @@
+# Instalar:
+#   sudo cp play-hdmi.sh /usr/local/bin/fimi-play-hdmi
+#   sudo cp fimi-hdmi.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now fimi-hdmi
+# Edite User= para o usuário que tem acesso a /dev/dri (grupos video e render).
+[Unit]
+Description=FIMI drone -> saida HDMI (mpv)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+User=pi
+SupplementaryGroups=video render input
+Environment=STREAM_URL=rtsp://reader:EscolhaOutraSenhaForte@127.0.0.1:8554/fimi
+ExecStart=/usr/local/bin/fimi-play-hdmi
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

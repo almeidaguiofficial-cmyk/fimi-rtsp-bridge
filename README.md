@@ -124,6 +124,11 @@ docker compose up -d
 8. Pra parar: use o botão do app **ou** a ação **Parar transmissão** da
    notificação persistente.
 
+## Levar a imagem por fibra e HDMI
+
+Veja [`docs/FIBRA-HDMI.md`](docs/FIBRA-HDMI.md): topologias (IP sobre fibra, HDMI sobre fibra),
+script de saída HDMI de baixa latência (`server/hdmi/play-hdmi.sh`) e unit systemd.
+
 ## Usar com um servidor RTMP (ex.: Skywatch)
 
 1. No painel do servidor, copie a **URL completa de publicação** do drone —
