@@ -3,6 +3,9 @@ name: build-apk
 on:
   push:
     branches: [ main ]
+  # Pull request compila e roda os testes, mas não publica release (guardas abaixo).
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
 
 permissions:
@@ -23,6 +26,11 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # O default da action é instalar "tools platform-tools", e o pacote legado
+          # "tools" saiu do repositório do SDK (sdkmanager: "Failed to find package").
+          # Vazio pula essa instalação — o passo seguinte instala o que o build precisa.
+          packages: ''
 
       - name: Install SDK packages
         run: |
@@ -56,7 +64,7 @@ jobs:
           gradle assembleDebug --no-daemon --stacktrace 2>&1 | tee -a build.log
 
       - name: Upload build log on failure
-        if: failure()
+        if: failure() && github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: buildlog
@@ -79,6 +87,7 @@ jobs:
           if-no-files-found: error
 
       - name: Publish to "latest" release
+        if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest

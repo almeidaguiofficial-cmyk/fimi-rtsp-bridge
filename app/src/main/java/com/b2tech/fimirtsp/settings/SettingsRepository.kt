@@ -33,6 +33,8 @@ data class StreamSettings(
     val bitrateBps: Int,
     val transport: RtspTransport,
     val stopOnTaskRemoved: Boolean,
+    /** Bitrate adaptativo + descarte de atraso acumulado (ver LatencyGuard). */
+    val adaptToNetwork: Boolean,
 ) {
     companion object {
         const val MIN_BITRATE_BPS = 300_000
@@ -58,6 +60,7 @@ class SettingsRepository(private val context: Context) {
         val BITRATE = intPreferencesKey("bitrate_bps")
         val TRANSPORT = stringPreferencesKey("transport")
         val STOP_ON_TASK_REMOVED = booleanPreferencesKey("stop_on_task_removed")
+        val ADAPT_TO_NETWORK = booleanPreferencesKey("adapt_to_network")
     }
 
     val settings: Flow<StreamSettings> = context.dataStore.data.map { prefs ->
@@ -77,6 +80,7 @@ class SettingsRepository(private val context: Context) {
                 else -> RtspTransport.TCP
             },
             stopOnTaskRemoved = prefs[Keys.STOP_ON_TASK_REMOVED] ?: true,
+            adaptToNetwork = prefs[Keys.ADAPT_TO_NETWORK] ?: true,
         )
     }
 
@@ -94,6 +98,7 @@ class SettingsRepository(private val context: Context) {
                     else -> RtspTransport.TCP
                 },
                 stopOnTaskRemoved = prefs[Keys.STOP_ON_TASK_REMOVED] ?: true,
+                adaptToNetwork = prefs[Keys.ADAPT_TO_NETWORK] ?: true,
             )
             val next = transform(current)
             prefs[Keys.URL] = next.serverUrl
@@ -105,6 +110,7 @@ class SettingsRepository(private val context: Context) {
                 .coerceIn(StreamSettings.MIN_BITRATE_BPS, StreamSettings.MAX_BITRATE_BPS)
             prefs[Keys.TRANSPORT] = next.transport.name
             prefs[Keys.STOP_ON_TASK_REMOVED] = next.stopOnTaskRemoved
+            prefs[Keys.ADAPT_TO_NETWORK] = next.adaptToNetwork
         }
     }
 }

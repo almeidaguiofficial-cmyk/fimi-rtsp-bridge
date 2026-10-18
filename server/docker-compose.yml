@@ -6,6 +6,8 @@ services:
     ports:
       # RTSP publicação e leitura
       - "8554:8554"
+      # SRT publicação e leitura (UDP) — o melhor protocolo para 4G instável
+      - "8890:8890/udp"
       # RTSPS (RTSP com TLS) — descomente e forneça certificado para usar
       # - "8322:8322"
       # WebRTC (WHIP/WHEP) — permite abrir a stream direto no navegador

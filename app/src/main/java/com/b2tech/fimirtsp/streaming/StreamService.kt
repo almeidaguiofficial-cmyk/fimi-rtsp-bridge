@@ -55,6 +55,9 @@ class StreamService : Service(), StreamEngine.Listener {
             "Publish.Failed",
             "Unsupported protocol",
             "Endpoint malformed",
+            // SRT: passphrase errada ou ausente — repetir o handshake não muda a resposta.
+            "SRT_REJ_BADSECRET",
+            "SRT_REJ_UNSECURE",
         )
 
         private val _state: MutableStateFlow<StreamState> = MutableStateFlow(StreamState.Idle)
@@ -68,6 +71,9 @@ class StreamService : Service(), StreamEngine.Listener {
 
         private val _reconnectAttempts: MutableStateFlow<Int> = MutableStateFlow(0)
         val reconnectAttempts: StateFlow<Int> = _reconnectAttempts.asStateFlow()
+
+        private val _netStats: MutableStateFlow<NetworkStats?> = MutableStateFlow(null)
+        val netStats: StateFlow<NetworkStats?> = _netStats.asStateFlow()
 
         fun requestStart(context: Context, resultCode: Int, data: Intent) {
             val intent = Intent(context, StreamService::class.java).apply {
@@ -96,6 +102,7 @@ class StreamService : Service(), StreamEngine.Listener {
     @Volatile private var retryPending = false
     private var streamingStartedAt = 0L
     private var stopOnTaskRemoved = true
+    @Volatile private var lastNotificationText: String? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -142,6 +149,7 @@ class StreamService : Service(), StreamEngine.Listener {
         }
         manualStop = false
         retryPending = false
+        _netStats.value = null
         transition(StreamEvent.RequestAuthorize)
         transition(StreamEvent.AuthorizationGranted)
 
@@ -185,6 +193,7 @@ class StreamService : Service(), StreamEngine.Listener {
             user = settings.rtspUser,
             password = settings.rtspPassword,
             fallbackSizes = fallback,
+            adaptToNetwork = settings.adaptToNetwork,
         )
         when (val result = engine.prepare(request)) {
             is StreamEngine.PrepareResult.Ok -> {
@@ -307,6 +316,22 @@ class StreamService : Service(), StreamEngine.Listener {
         _statsBps.value = bps
     }
 
+    override fun onNetworkStats(stats: NetworkStats) {
+        if (manualStop) return
+        _netStats.value = stats
+        // Durante o voo o FIMI Navi fica na frente: a notificação é o único lugar onde o piloto
+        // vê que a rede piorou. Só reescreve quando o texto muda, não a cada segundo.
+        if (_state.value !is StreamState.Streaming) return
+        val text = getString(
+            when (stats.quality) {
+                LinkQuality.UNSTABLE -> R.string.status_streaming_unstable
+                LinkQuality.BAD -> R.string.status_streaming_bad
+                LinkQuality.GOOD, LinkQuality.UNKNOWN -> R.string.status_streaming
+            }
+        )
+        if (text != lastNotificationText) updateNotification(text)
+    }
+
     private fun failFatally(message: String) {
         if (manualStop) return
         manualStop = true
@@ -397,6 +422,7 @@ class StreamService : Service(), StreamEngine.Listener {
     }
 
     private fun startForegroundNotification(text: String) {
+        lastNotificationText = text
         val n = buildNotification(text)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
@@ -406,6 +432,7 @@ class StreamService : Service(), StreamEngine.Listener {
     }
 
     private fun updateNotification(text: String) {
+        lastNotificationText = text
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         nm.notify(NOTIF_ID, buildNotification(text))
     }

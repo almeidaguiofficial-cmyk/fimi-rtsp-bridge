@@ -4,15 +4,17 @@ package com.b2tech.fimirtsp.validation
  * Valida URLs de publicação. Aceita:
  *  - rtsp://host[:porta]/caminho  e  rtsps://...
  *  - rtmp://host[:porta]/app/chave[?key=...]  e  rtmps://...
+ *  - srt://host[:porta]?streamid=...  ou  srt://host[:porta]/streamid
  *  - userinfo (user:pass@) opcional — apesar de recomendarmos os campos separados
  *  - host IPv4, hostname ou colchetes IPv6
  *
- * Rejeita: URLs sem esquema, portas fora de 1..65535, caminho vazio.
+ * Rejeita: URLs sem esquema, portas fora de 1..65535, caminho vazio (no SRT,
+ * caminho e streamid vazios).
  * Não faz DNS lookup: só valida a forma.
  */
 object StreamUrlValidator {
 
-    enum class Family { RTSP, RTMP }
+    enum class Family { RTSP, RTMP, SRT }
 
     data class Result(
         val ok: Boolean,
@@ -22,30 +24,33 @@ object StreamUrlValidator {
         val family: Family? get() = when (scheme) {
             "rtsp", "rtsps" -> Family.RTSP
             "rtmp", "rtmps" -> Family.RTMP
+            "srt" -> Family.SRT
             else -> null
         }
     }
 
-    private val ALLOWED_SCHEMES = setOf("rtsp", "rtsps", "rtmp", "rtmps")
+    private val ALLOWED_SCHEMES = setOf("rtsp", "rtsps", "rtmp", "rtmps", "srt")
 
     fun validate(input: String?): Result {
         val raw = input?.trim().orEmpty()
         if (raw.isEmpty()) return Result(false, "Endereço vazio")
 
         val schemeSep = raw.indexOf("://")
-        if (schemeSep <= 0) return Result(false, "Falta o esquema (rtsp:// ou rtmp://)")
+        if (schemeSep <= 0) return Result(false, "Falta o esquema (rtsp://, rtmp:// ou srt://)")
 
         val scheme = raw.substring(0, schemeSep).lowercase()
         if (scheme !in ALLOWED_SCHEMES) {
-            return Result(false, "Esquema não suportado: $scheme (use rtsp, rtsps, rtmp ou rtmps)")
+            return Result(false, "Esquema não suportado: $scheme (use rtsp, rtsps, rtmp, rtmps ou srt)")
         }
 
         val rest = raw.substring(schemeSep + 3)
         if (rest.isBlank()) return Result(false, "Falta o host")
 
-        val pathIdx = rest.indexOf('/')
-        val authority = if (pathIdx < 0) rest else rest.substring(0, pathIdx)
-        val path = if (pathIdx < 0) "" else rest.substring(pathIdx)
+        // A autoridade acaba no primeiro '/' ou '?': o SRT do MediaMTX não tem caminho
+        // (srt://host:8890?streamid=publish:fimi).
+        val authorityEnd = rest.indexOfFirst { it == '/' || it == '?' }.let { if (it < 0) rest.length else it }
+        val authority = rest.substring(0, authorityEnd)
+        val path = rest.substring(authorityEnd)
 
         // Remove userinfo, se houver.
         val hostPort = authority.substringAfterLast('@')
@@ -76,7 +81,15 @@ object StreamUrlValidator {
         }
 
         val pathOnly = path.substringBefore('?')
-        if (pathOnly.isBlank() || pathOnly == "/") {
+        val hasPath = pathOnly.isNotBlank() && pathOnly != "/"
+        if (scheme == "srt") {
+            val hasStreamId = path.substringAfter('?', "").split('&').any {
+                it.startsWith("streamid=") && it.length > "streamid=".length
+            }
+            if (!hasPath && !hasStreamId) {
+                return Result(false, "Falta o streamid (ex.: srt://IP:8890?streamid=publish:fimi)")
+            }
+        } else if (!hasPath) {
             return Result(false, "Falta o caminho após o host (ex.: /fimi ou /live/ID)")
         }
 

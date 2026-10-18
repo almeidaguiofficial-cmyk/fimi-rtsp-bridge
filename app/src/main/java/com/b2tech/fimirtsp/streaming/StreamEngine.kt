@@ -17,6 +17,8 @@ interface StreamEngine {
         fun onConnectionFailed(reason: String)
         fun onAuthError()
         fun onBitrateSample(bps: Long)
+        /** Estado da fila de envio e do bitrate adaptado, uma vez por segundo (main thread). */
+        fun onNetworkStats(stats: NetworkStats)
         /** O sistema encerrou a MediaProjection (chip "Parar compartilhamento", revogação, bloqueio). */
         fun onCaptureStopped()
     }
@@ -33,13 +35,15 @@ interface StreamEngine {
         val password: String,
         /** Pares (w, h) que o motor pode tentar caso o encoder recuse a resolução alvo. */
         val fallbackSizes: List<Pair<Int, Int>>,
+        /** Baixa o bitrate e descarta atraso acumulado quando a subida não dá conta. */
+        val adaptToNetwork: Boolean,
     )
 
     /** Prepara vídeo + captura de tela; devolve a resolução que foi aceita. */
     fun prepare(request: PrepareRequest): PrepareResult
 
     /**
-     * Publica no endpoint (rtsp/rtsps/rtmp/rtmps). Não bloqueia na rede, mas sobe
+     * Publica no endpoint (rtsp/rtsps/rtmp/rtmps/srt). Não bloqueia na rede, mas sobe
      * captura e encoders: devolve false (já desfeito) se algum deles falhar.
      */
     fun startStream(endpoint: String): Boolean

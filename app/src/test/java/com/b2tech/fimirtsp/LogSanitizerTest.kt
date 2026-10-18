@@ -39,6 +39,23 @@ class LogSanitizerTest {
         assertTrue(out.contains("/live/9ea2113a?key=***&x=1"))
     }
 
+    @Test fun mascara_passphrase_do_srt() {
+        val out = LogSanitizer.sanitize("srt://h:8890?streamid=publish:fimi&passphrase=segredo123456")
+        assertFalse(out.contains("segredo123456"))
+        assertTrue(out.contains("passphrase=***"))
+    }
+
+    @Test fun mascara_senha_no_streamid_do_mediamtx() {
+        val out = LogSanitizer.sanitize("srt://h:8890?streamid=publish:fimi:publisher:Sup3rS3nha&latency=800")
+        assertFalse(out.contains("Sup3rS3nha"))
+        assertTrue(out.contains("streamid=publish:fimi:publisher:***&latency=800"))
+    }
+
+    @Test fun preserva_streamid_sem_credencial() {
+        val texto = "srt://h:8890?streamid=publish:fimi"
+        assertEquals(texto, LogSanitizer.sanitize(texto))
+    }
+
     @Test fun devolve_vazio_pra_nulo() {
         assertEquals("", LogSanitizer.sanitize(null))
     }

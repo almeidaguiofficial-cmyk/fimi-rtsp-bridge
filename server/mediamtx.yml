@@ -8,6 +8,12 @@ writeTimeout: 15s
 rtspAddress: :8554
 rtspTransports: [tcp, udp]
 
+# --- SRT (recomendado para 4G instável: UDP com retransmissão) ---
+# Publicar: srt://SEU_HOST:8890?streamid=publish:fimi:publisher:SENHA
+# Ler:      srt://SEU_HOST:8890?streamid=read:fimi:reader:SENHA
+srt: yes
+srtAddress: :8890
+
 # --- WebRTC (opcional) ---
 webrtcAddress: :8889
 webrtcAllowOrigin: '*'

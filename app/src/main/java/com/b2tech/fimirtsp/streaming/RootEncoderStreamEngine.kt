@@ -5,24 +5,35 @@ import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import com.b2tech.fimirtsp.settings.RtspTransport
 import com.b2tech.fimirtsp.util.LogSanitizer
 import com.pedro.common.ConnectChecker
+import com.pedro.common.StreamingStatsReport
+import com.pedro.common.Throughput
 import com.pedro.encoder.input.sources.audio.NoAudioSource
 import com.pedro.encoder.input.sources.video.NoVideoSource
 import com.pedro.encoder.input.sources.video.ScreenSource
 import com.pedro.library.generic.GenericStream
+import com.pedro.library.util.QueueAwareBitrateAdapter
 import com.pedro.rtsp.rtsp.Protocol
 
 /**
  * Motor de streaming apoiado na RootEncoder (pedroSG94). GenericStream escolhe o
- * cliente pelo esquema da URL (rtsp/rtsps/rtmp/rtmps), e o GenericStreamClient
+ * cliente pelo esquema da URL (rtsp/rtsps/rtmp/rtmps/srt), e o GenericStreamClient
  * expõe setProtocol (TCP/UDP do RTSP), setAuthorization (RTMP e RTSP) e
  * setOnlyVideo — o mesmo pipeline de captura já validado no Skywatch Cast.
  */
 class RootEncoderStreamEngine(
     private val context: Context,
 ) : StreamEngine {
+
+    private companion object {
+        // Abaixo disso a tela do FIMI vira borrão; melhor segurar e deixar o guarda de atraso agir.
+        const val MIN_ADAPTIVE_BITRATE_BPS = 300_000
+        // De quanto em quanto tempo o adaptador volta a testar o teto depois de uma queda (s).
+        const val ADAPTIVE_CEILING_TTL_S = 60
+    }
 
     private val projectionManager: MediaProjectionManager =
         context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
@@ -34,6 +45,10 @@ class RootEncoderStreamEngine(
     private var encHeight = 0
     private var currentFps = 30
     private var currentBitrate = 3_000_000
+    private var adaptToNetwork = true
+    private var adaptedBitrate = currentBitrate
+    private var bitrateAdapter: QueueAwareBitrateAdapter? = null
+    private var latencyGuard = LatencyGuard()
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private val connectChecker = object : ConnectChecker {
@@ -43,6 +58,8 @@ class RootEncoderStreamEngine(
             listener?.onConnectionFailed(LogSanitizer.sanitize(reason))
         }
         override fun onNewBitrate(bitrate: Long) { listener?.onBitrateSample(bitrate) }
+        // A lib entrega na main thread, uma vez por segundo, com o estado da fila de envio.
+        override fun onStreamingStats(report: StreamingStatsReport) { handleStreamingStats(report) }
         override fun onDisconnect() { listener?.onDisconnected() }
         override fun onAuthError() { listener?.onAuthError() }
         override fun onAuthSuccess() { }
@@ -99,6 +116,21 @@ class RootEncoderStreamEngine(
 
         currentFps = request.fps.coerceIn(10, 60)
         currentBitrate = request.bitrateBps
+        adaptedBitrate = currentBitrate
+        adaptToNetwork = request.adaptToNetwork
+        latencyGuard = LatencyGuard()
+        // Guiado pela fila (não pelo bitrate medido): quando frames começam a empilhar, a rede é
+        // o limite, então ele fica abaixo do que a rede entregou em vez de voltar a forçar o teto.
+        // Sobrevive aos reTry da sessão — reconectar num link ruim não deve recomeçar no máximo.
+        bitrateAdapter = if (adaptToNetwork) {
+            QueueAwareBitrateAdapter(
+                currentBitrate,
+                minOf(MIN_ADAPTIVE_BITRATE_BPS, currentBitrate),
+                ADAPTIVE_CEILING_TTL_S,
+            ) { bps -> applyAdaptedBitrate(bps) }
+        } else {
+            null
+        }
 
         val candidates = buildList {
             add(request.targetWidth to request.targetHeight)
@@ -164,7 +196,7 @@ class RootEncoderStreamEngine(
     override fun startStream(endpoint: String): Boolean {
         if (stream.isStreaming) return true
         return try {
-            stream.startStream(endpoint)
+            stream.startStream(SrtUrl.withDefaultLatency(endpoint))
             true
         } catch (t: Throwable) {
             // A lib já marcou isStreaming=true antes de subir captura/encoder: desfaz.
@@ -196,9 +228,50 @@ class RootEncoderStreamEngine(
         try { mediaProjection?.stop() } catch (_: Throwable) {}
         mediaProjection = null
         screenSource = null
+        bitrateAdapter = null
     }
 
     override fun isStreaming(): Boolean = streamLazy.isInitialized() && stream.isStreaming
+
+    private fun applyAdaptedBitrate(bps: Int) {
+        adaptedBitrate = bps
+        try { stream.setVideoBitrateOnFly(bps) } catch (_: Throwable) {}
+    }
+
+    private fun handleStreamingStats(report: StreamingStatsReport) {
+        if (!isStreaming()) return
+        val client = stream.getStreamClient()
+        // setOnlyVideo(true) desliga o áudio no client: tudo na fila é frame de vídeo.
+        val queueSeconds = client.getItemsInCache().toFloat() / currentFps
+        if (adaptToNetwork) {
+            bitrateAdapter?.onStreamingStats(report)
+            if (latencyGuard.shouldSkip(queueSeconds, SystemClock.elapsedRealtime())) {
+                try {
+                    client.clearCache()
+                    // Os P-frames seguintes apontam para frames descartados; o keyframe encurta o
+                    // borrão até o próximo GOP (que já é de 1 s).
+                    stream.requestKeyframe()
+                } catch (_: Throwable) {
+                }
+            }
+        }
+        listener?.onNetworkStats(
+            NetworkStats(
+                targetBitrateBps = adaptedBitrate,
+                maxBitrateBps = currentBitrate,
+                queueSeconds = queueSeconds,
+                quality = LinkQualityClassifier.classify(
+                    hasMeasurement = report.smoothedBitrate > 0,
+                    insufficient = report.throughput == Throughput.INSUFFICIENT,
+                    queueSeconds = queueSeconds,
+                    targetBitrateBps = adaptedBitrate,
+                    maxBitrateBps = currentBitrate,
+                ),
+                liveSkips = latencyGuard.skips,
+                adaptive = adaptToNetwork,
+            )
+        )
+    }
 
     override fun onOrientationChanged(landscape: Boolean) {
         val src = screenSource ?: return

@@ -25,6 +25,8 @@
     <string name="status_preparing">Preparando</string>
     <string name="status_connecting">Conectando</string>
     <string name="status_streaming">Transmitindo</string>
+    <string name="status_streaming_unstable">Transmitindo — internet instável, qualidade reduzida</string>
+    <string name="status_streaming_bad">Transmitindo — internet ruim, imagem pode pular</string>
     <string name="status_reconnecting">Reconectando</string>
     <string name="status_stopping">Encerrando</string>
     <string name="status_error">Erro</string>
