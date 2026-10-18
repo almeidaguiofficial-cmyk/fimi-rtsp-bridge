@@ -1,6 +1,6 @@
 # Servidor MediaMTX para o FIMI RTSP Bridge
 
-Este servidor recebe o vídeo publicado pelo celular via RTSP e redistribui em RTSP, HLS e WebRTC.
+Este servidor recebe o vídeo publicado pelo celular via RTSP ou SRT e redistribui em RTSP, SRT, HLS e WebRTC.
 
 ## Requisitos
 
@@ -18,6 +18,7 @@ O MediaMTX passa a escutar em:
 
 - `rtsp://SEU_HOST:8554/fimi`  ← endpoint que o app publica
 - `rtsp://SEU_HOST:8554/fimi`  ← endpoint que VLC/OBS/NVR consomem
+- `srt://SEU_HOST:8890?streamid=publish:fimi:publisher:SENHA` ← publicação SRT (4G instável)
 - `http://SEU_HOST:8888/fimi/index.m3u8` ← HLS
 - `http://SEU_HOST:8889/fimi` ← WebRTC
 
@@ -34,6 +35,25 @@ O `mediamtx.yml` já vem com autenticação interna ativada. Antes de expor:
 ```bash
 ffmpeg -re -f lavfi -i "testsrc2=size=1280x720:rate=30" -c:v libx264 -tune zerolatency \
   -f rtsp rtsp://publisher:EscolhaUmaSenhaForte@localhost:8554/fimi
+```
+
+## Publicar por SRT (4G instável)
+
+No app, use como endereço:
+
+```
+srt://SEU_HOST:8890?streamid=publish:fimi:publisher:EscolhaUmaSenhaForte
+```
+
+As credenciais vão dentro do `streamid` (`acao:caminho:usuario:senha`); os campos
+usuário/senha do app só valem para RTSP/RTMP. O app acrescenta `&latency=800` (ms)
+se a URL não trouxer `latency=` — aumente para 1200–2000 em 4G muito ruim.
+
+Teste sem o celular:
+
+```bash
+ffmpeg -re -f lavfi -i "testsrc2=size=1280x720:rate=30" -c:v libx264 -tune zerolatency \
+  -f mpegts "srt://localhost:8890?streamid=publish:fimi:publisher:EscolhaUmaSenhaForte&pkt_size=1316"
 ```
 
 ## Consumir no VLC
@@ -55,6 +75,7 @@ Abra `http://SEU_HOST:8889/fimi` em qualquer navegador moderno. Latência típic
 |-------------|-------------------------|-------------------------------|
 | 8554/tcp    | RTSP publicação/leitura | Somente para clientes         |
 | 8322/tcp    | RTSPS (opcional, TLS)   | Somente com certificado válido|
+| 8890/udp    | SRT publicação/leitura  | Somente para clientes         |
 | 8888/tcp    | HLS                     | Se quiser player web/OBS      |
 | 8889/tcp    | WebRTC (WHIP/WHEP)      | Se quiser player web          |
 | 8189/udp    | ICE/WebRTC              | Junto com 8889                |

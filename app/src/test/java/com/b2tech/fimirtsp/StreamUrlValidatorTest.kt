@@ -46,8 +46,34 @@ class StreamUrlValidatorTest {
 
     @Test fun rejeita_esquema_desconhecido() {
         assertFalse(StreamUrlValidator.isValid("http://x/y"))
-        assertFalse(StreamUrlValidator.isValid("srt://x:9000/y"))
+        assertFalse(StreamUrlValidator.isValid("udp://x:9000/y"))
         assertFalse(StreamUrlValidator.isValid("x/y"))
+    }
+
+    @Test fun aceita_srt_do_mediamtx_sem_caminho() {
+        val r = StreamUrlValidator.validate("srt://192.168.1.100:8890?streamid=publish:fimi")
+        assertTrue(r.ok)
+        assertEquals("srt", r.scheme)
+        assertEquals(StreamUrlValidator.Family.SRT, r.family)
+    }
+
+    @Test fun aceita_srt_com_credenciais_e_latencia_no_streamid() {
+        assertTrue(StreamUrlValidator.isValid("srt://media.exemplo.com:8890?streamid=publish:fimi:publisher:s3nha&latency=1200"))
+    }
+
+    @Test fun aceita_srt_com_streamid_no_caminho() {
+        assertTrue(StreamUrlValidator.isValid("srt://host:9000/live"))
+    }
+
+    @Test fun rejeita_srt_sem_streamid() {
+        assertFalse(StreamUrlValidator.isValid("srt://host:8890"))
+        assertFalse(StreamUrlValidator.isValid("srt://host:8890?latency=800"))
+        assertFalse(StreamUrlValidator.isValid("srt://host:8890?streamid="))
+    }
+
+    @Test fun porta_antes_da_query_continua_validada() {
+        assertFalse(StreamUrlValidator.isValid("srt://host:99999?streamid=publish:fimi"))
+        assertFalse(StreamUrlValidator.isValid("rtmp://host:abc?key=x"))
     }
 
     @Test fun rejeita_vazio_ou_branco() {

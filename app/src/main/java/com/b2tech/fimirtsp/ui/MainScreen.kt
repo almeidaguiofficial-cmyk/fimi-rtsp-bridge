@@ -30,6 +30,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -47,6 +48,9 @@ import androidx.compose.ui.unit.dp
 import com.b2tech.fimirtsp.settings.RtspTransport
 import com.b2tech.fimirtsp.settings.StreamSettings
 import com.b2tech.fimirtsp.settings.VideoResolution
+import com.b2tech.fimirtsp.streaming.LinkQuality
+import com.b2tech.fimirtsp.streaming.NetworkStats
+import com.b2tech.fimirtsp.streaming.SrtUrl
 import com.b2tech.fimirtsp.streaming.StreamState
 import com.b2tech.fimirtsp.validation.StreamUrlValidator
 
@@ -61,6 +65,7 @@ fun MainScreen(
     onFpsChange: (Int) -> Unit,
     onBitrateChange: (Int) -> Unit,
     onTransportChange: (RtspTransport) -> Unit,
+    onAdaptToNetworkChange: (Boolean) -> Unit,
     onAuthorizeAndStart: () -> Unit,
     onStop: () -> Unit,
     onOpenFimi: () -> Unit,
@@ -89,6 +94,7 @@ fun MainScreen(
                 state = engineState,
                 bitrateBps = state.bitrateSampleBps,
                 reconnectAttempts = state.reconnectAttempts,
+                netStats = state.netStats,
                 connectivityLabel = connectivityLabel(state),
             )
 
@@ -110,6 +116,7 @@ fun MainScreen(
                 onResolutionChange = onResolutionChange,
                 onFpsChange = onFpsChange,
                 onBitrateChange = onBitrateChange,
+                onAdaptToNetworkChange = onAdaptToNetworkChange,
                 enabled = !busy,
             )
 
@@ -133,6 +140,7 @@ private fun StatusCard(
     state: StreamState,
     bitrateBps: Long,
     reconnectAttempts: Int,
+    netStats: NetworkStats?,
     connectivityLabel: String,
 ) {
     val label = when (state) {
@@ -167,6 +175,7 @@ private fun StatusCard(
                     val secs = ((System.currentTimeMillis() - state.startedAtMillis) / 1000).coerceAtLeast(0)
                     Text("Tempo: ${formatDuration(secs)}  •  FPS alvo: ${state.fps}  •  Alvo: ${state.bitrateBps / 1_000_000.0} Mbps")
                     Text("Bitrate agora: ${bitrateBps / 1000} kbps")
+                    if (netStats != null) NetworkStatsLines(netStats)
                 }
                 is StreamState.Reconnecting -> Text("Próxima tentativa em ${state.nextDelayMs / 1000}s")
                 is StreamState.Error -> {
@@ -206,7 +215,7 @@ private fun ServerCard(
             supportingText = {
                 Text(
                     urlError
-                        ?: "Ex.: rtsp://IP:8554/fimi  ou  rtmp://servidor:1935/live/ID?key=..."
+                        ?: "Ex.: rtsp://IP:8554/fimi, rtmp://servidor:1935/live/ID?key=... ou srt://IP:8890?streamid=publish:fimi"
                 )
             },
             singleLine = true,
@@ -241,6 +250,13 @@ private fun ServerCard(
                 "RTMP: transporte sempre TCP. Se o servidor exigir chave, ela vai na própria URL (?key=...).",
                 style = MaterialTheme.typography.bodySmall,
             )
+            StreamUrlValidator.Family.SRT -> Text(
+                "SRT: UDP com retransmissão — o melhor para 4G instável, se o servidor aceitar " +
+                    "(MediaMTX aceita na porta 8890). Latência padrão de ${SrtUrl.DEFAULT_LATENCY_MS} ms; " +
+                    "mude com &latency=MS na URL. Credenciais do MediaMTX vão no streamid " +
+                    "(publish:fimi:usuario:senha), não nos campos acima.",
+                style = MaterialTheme.typography.bodySmall,
+            )
             else -> {
                 Text("Transporte RTSP", style = MaterialTheme.typography.labelLarge)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -257,6 +273,13 @@ private fun ServerCard(
                         label = { Text("UDP") },
                     )
                 }
+                if (settings.transport == RtspTransport.UDP) {
+                    Text(
+                        "UDP no RTSP não reenvia pacote perdido: no 4G a imagem cinza/trava. Prefira TCP fora da rede local.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
             }
         }
     }
@@ -268,9 +291,28 @@ private fun EncodingCard(
     onResolutionChange: (VideoResolution) -> Unit,
     onFpsChange: (Int) -> Unit,
     onBitrateChange: (Int) -> Unit,
+    onAdaptToNetworkChange: (Boolean) -> Unit,
     enabled: Boolean,
 ) {
     SectionCard(title = "Codificação") {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Adaptar à internet (recomendado no 4G)", style = MaterialTheme.typography.labelLarge)
+                Text(
+                    "Baixa a qualidade quando a rede piora e pula o atraso acumulado para a imagem não travar.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Switch(
+                checked = settings.adaptToNetwork,
+                onCheckedChange = onAdaptToNetworkChange,
+                enabled = enabled,
+            )
+        }
         Text("Resolução", style = MaterialTheme.typography.labelLarge)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             VideoResolution.entries.forEach { res ->
@@ -294,7 +336,8 @@ private fun EncodingCard(
             }
         }
         Text(
-            "Bitrate: %.1f Mbps".format(settings.bitrateBps / 1_000_000.0),
+            if (settings.adaptToNetwork) "Bitrate máximo: %.1f Mbps".format(settings.bitrateBps / 1_000_000.0)
+            else "Bitrate: %.1f Mbps".format(settings.bitrateBps / 1_000_000.0),
             style = MaterialTheme.typography.labelLarge,
         )
         Slider(
@@ -303,6 +346,31 @@ private fun EncodingCard(
             valueRange = 0.5f..12f,
             steps = 22,
             enabled = enabled,
+        )
+    }
+}
+
+@Composable
+private fun NetworkStatsLines(stats: NetworkStats) {
+    val quality = when (stats.quality) {
+        LinkQuality.UNKNOWN -> "medindo…"
+        LinkQuality.GOOD -> "boa"
+        LinkQuality.UNSTABLE -> "instável"
+        LinkQuality.BAD -> "ruim"
+    }
+    Text("Internet: $quality  •  Atraso na fila: %.1f s".format(stats.queueSeconds))
+    if (stats.adaptive) {
+        Text(
+            "Qualidade adaptada: %.1f de %.1f Mbps".format(
+                stats.targetBitrateBps / 1_000_000.0,
+                stats.maxBitrateBps / 1_000_000.0,
+            )
+        )
+    }
+    if (stats.liveSkips > 0) {
+        Text(
+            "Saltos para o ao vivo: ${stats.liveSkips} (atraso descartado para não travar)",
+            style = MaterialTheme.typography.bodySmall,
         )
     }
 }

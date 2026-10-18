@@ -14,6 +14,7 @@ import com.b2tech.fimirtsp.settings.RtspTransport
 import com.b2tech.fimirtsp.settings.SettingsRepository
 import com.b2tech.fimirtsp.settings.StreamSettings
 import com.b2tech.fimirtsp.settings.VideoResolution
+import com.b2tech.fimirtsp.streaming.NetworkStats
 import com.b2tech.fimirtsp.streaming.StreamService
 import com.b2tech.fimirtsp.streaming.StreamState
 import com.b2tech.fimirtsp.validation.StreamUrlValidator
@@ -31,10 +32,18 @@ data class UiState(
     val connectivity: Connectivity,
     val bitrateSampleBps: Long,
     val reconnectAttempts: Int,
+    val netStats: NetworkStats?,
     val awaitingProjection: Boolean,
 ) {
     val urlIsValid: Boolean get() = urlError == null && settings.serverUrl.isNotBlank()
 }
+
+private data class ServiceOutputs(
+    val state: StreamState,
+    val bitrateBps: Long,
+    val reconnectAttempts: Int,
+    val netStats: NetworkStats?,
+)
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
 
@@ -43,26 +52,28 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val projectionRequestFlag = MutableStateFlow(false)
 
-    // Compõe os StateFlows do serviço em um só Triple para caber no combine tipado (5 args).
+    // Compõe os StateFlows do serviço em um só objeto para caber no combine tipado (5 args).
     private val serviceOutputs = combine(
         StreamService.state,
         StreamService.statsBps,
         StreamService.reconnectAttempts,
-    ) { st, bps, attempts -> Triple(st, bps, attempts) }
+        StreamService.netStats,
+    ) { st, bps, attempts, net -> ServiceOutputs(st, bps, attempts, net) }
 
     val state: StateFlow<UiState> = combine(
         settingsRepo.settings,
         serviceOutputs,
         connectivity.observe(),
         projectionRequestFlag,
-    ) { settings, triple, conn, awaiting ->
+    ) { settings, service, conn, awaiting ->
         UiState(
             settings = settings,
             urlError = StreamUrlValidator.validate(settings.serverUrl).error,
-            engineState = triple.first,
+            engineState = service.state,
             connectivity = conn,
-            bitrateSampleBps = triple.second,
-            reconnectAttempts = triple.third,
+            bitrateSampleBps = service.bitrateBps,
+            reconnectAttempts = service.reconnectAttempts,
+            netStats = service.netStats,
             awaitingProjection = awaiting,
         )
     }.stateIn(
@@ -78,12 +89,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 bitrateBps = StreamSettings.DEFAULT_BITRATE_BPS,
                 transport = RtspTransport.TCP,
                 stopOnTaskRemoved = true,
+                adaptToNetwork = true,
             ),
             urlError = StreamUrlValidator.validate(BuildConfig.DEFAULT_STREAM_URL).error,
             engineState = StreamState.Idle,
             connectivity = Connectivity(false, Connectivity.Transport.NONE),
             bitrateSampleBps = 0L,
             reconnectAttempts = 0,
+            netStats = null,
             awaitingProjection = false,
         ),
     )
@@ -121,6 +134,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun updateTransport(v: RtspTransport) = viewModelScope.launch {
         settingsRepo.update { it.copy(transport = v) }
+    }
+
+    fun updateAdaptToNetwork(v: Boolean) = viewModelScope.launch {
+        settingsRepo.update { it.copy(adaptToNetwork = v) }
     }
 
     fun markAwaitingProjection(v: Boolean) {

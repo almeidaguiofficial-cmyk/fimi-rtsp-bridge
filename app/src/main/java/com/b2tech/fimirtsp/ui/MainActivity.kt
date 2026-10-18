@@ -53,6 +53,7 @@ class MainActivity : ComponentActivity() {
                     onFpsChange = viewModel::updateFps,
                     onBitrateChange = viewModel::updateBitrateBps,
                     onTransportChange = viewModel::updateTransport,
+                    onAdaptToNetworkChange = viewModel::updateAdaptToNetwork,
                     onAuthorizeAndStart = { authorizeAndStart(uiState.urlIsValid) },
                     onStop = { viewModel.stopStreaming(application) },
                     onOpenFimi = { openFimi(candidates) },
@@ -65,7 +66,7 @@ class MainActivity : ComponentActivity() {
 
     private fun authorizeAndStart(urlIsValid: Boolean) {
         if (!urlIsValid) {
-            toast("Endereço inválido. Use rtsp:// ou rtmp:// e corrija antes de iniciar.")
+            toast("Endereço inválido. Use rtsp://, rtmp:// ou srt:// e corrija antes de iniciar.")
             return
         }
         viewModel.markAwaitingProjection(true)
