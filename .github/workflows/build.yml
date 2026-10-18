@@ -3,8 +3,9 @@ name: build-apk
 on:
   push:
     branches: [ main ]
-  # PR roda testes, lint e build; releases só saem da main (passos com if abaixo).
+  # Pull request compila e roda os testes, mas não publica release (guardas abaixo).
   pull_request:
+    branches: [ main ]
   workflow_dispatch:
 
 permissions:
@@ -25,6 +26,11 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # O default da action é instalar "tools platform-tools", e o pacote legado
+          # "tools" saiu do repositório do SDK (sdkmanager: "Failed to find package").
+          # Vazio pula essa instalação — o passo seguinte instala o que o build precisa.
+          packages: ''
 
       - name: Install SDK packages
         run: |
