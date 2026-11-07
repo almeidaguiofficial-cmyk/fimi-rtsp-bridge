@@ -11,6 +11,7 @@ import com.pedro.common.ConnectChecker
 import com.pedro.encoder.input.sources.audio.NoAudioSource
 import com.pedro.encoder.input.sources.video.NoVideoSource
 import com.pedro.encoder.input.sources.video.ScreenSource
+import com.pedro.encoder.utils.CodecUtil
 import com.pedro.library.generic.GenericStream
 import com.pedro.rtsp.rtsp.Protocol
 
@@ -84,6 +85,12 @@ class RootEncoderStreamEngine(
         screenSource = null
 
         try { stream.getGlInterface().setForceRender(true, request.fps) } catch (_: Throwable) {}
+
+        // Bitrate constante: o padrão da lib prefere encoder de hardware SEM CBR a um de
+        // software COM CBR, e nesse caso transmite em VBR calado. CBR_PRIORITY inverte
+        // isso (hardware CBR > software CBR > hardware > software). Precisa vir antes do
+        // prepareVideo, que é onde o encoder é escolhido. Ver EncoderSelection.
+        stream.forceCodecType(CodecUtil.CodecType.CBR_PRIORITY, CodecUtil.CodecType.FIRST_COMPATIBLE_FOUND)
 
         val client = stream.getStreamClient()
         client.setOnlyVideo(true)

@@ -12,6 +12,9 @@ Testado com o padrão de captura já em produção no Skywatch Cast (RootEncoder
 
 - Pega a tela do celular (ou só a janela do FIMI Navi no Android 14+).
 - Codifica em **H.264 por hardware**, GOP de 1s, sem B-frames, sem áudio.
+- **Bitrate constante (CBR)**: o encoder é escolhido com prioridade para CBR
+  (hardware CBR > software CBR > hardware > software). O cartão *Codificação*
+  mostra qual encoder o aparelho usa e avisa em vermelho se nenhum suporta CBR.
 - Publica em `rtsp://SERVIDOR:8554/fimi` **ou** `rtmp://SERVIDOR:1935/live/ID?key=...`
   (o app escolhe RTSP/RTMP pelo esquema da URL; `rtsps://` e `rtmps://` também valem).
 - Roda em **Foreground Service tipo mediaProjection**, notificação persistente
@@ -195,6 +198,12 @@ Wi-Fi como padrão. Desligue o hotspot se quiser garantir 4G/5G, ou vice-versa.
 - **Bateria e temperatura**: encoder de vídeo por 30–60 min esquenta o celular.
   Recomendamos ventilação, sem case e brilho reduzido.
 - **RTSP simples é texto puro na rede** — use VPN/tunel/RTSPS ao sair da LAN.
+- **CBR no Android não é CBR de broadcast**: o `MediaCodec` controla a taxa
+  por janela, mas não preenche bits de enchimento. Em cena parada (FIMI Navi
+  em menu, drone pousado) a taxa ainda pode cair abaixo do alvo, e cada
+  keyframe (1/s) é um pico curto. O "Bitrate agora" mede o envio pela rede,
+  então também oscila com o buffer do TCP. Em voo, com imagem em movimento,
+  a taxa fica colada no alvo.
 
 ## Arquitetura
 
@@ -216,6 +225,8 @@ app/
 │   ├── StreamEngine.kt               # Contrato do motor
 │   ├── RootEncoderStreamEngine.kt    # RootEncoder GenericStream (rtsp/rtsps/rtmp/rtmps)
 │   ├── StreamState.kt                # Máquina de estados (publicador)
+│   ├── EncoderSelection.kt           # Regra CBR_PRIORITY (pura, testada)
+│   ├── EncoderProbe.kt               # Lê os encoders H.264 do aparelho
 │   └── Backoff.kt                    # 1,2,4,8,15s (compartilhado com o player)
 ├── player/
 │   ├── PlayerState.kt                # Máquina de estados do reprodutor
@@ -250,6 +261,7 @@ Cobrem:
 - `StreamStateMachineTest` — transições esperadas e proibidas (publicador).
 - `PlayerStateMachineTest` — transições esperadas e proibidas (reprodutor).
 - `PlayerErrorClassifierTest` — retry vs. fatal por código de erro do Media3.
+- `EncoderSelectionTest` — prioridade CBR na escolha do encoder e modo CBR/VBR.
 - `LogSanitizerTest` — senha nunca vaza em log ou toast (inclui `?pass=` do RTMP).
 - `BitrateBoundsTest` — clamp de bitrate 300 kbps..20 Mbps.
 

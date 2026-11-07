@@ -47,6 +47,8 @@ import androidx.compose.ui.unit.dp
 import com.b2tech.fimirtsp.settings.RtspTransport
 import com.b2tech.fimirtsp.settings.StreamSettings
 import com.b2tech.fimirtsp.settings.VideoResolution
+import com.b2tech.fimirtsp.streaming.BitrateMode
+import com.b2tech.fimirtsp.streaming.EncoderChoice
 import com.b2tech.fimirtsp.streaming.StreamState
 import com.b2tech.fimirtsp.validation.StreamUrlValidator
 
@@ -107,6 +109,7 @@ fun MainScreen(
 
             EncodingCard(
                 settings = state.settings,
+                encoderChoice = state.encoderChoice,
                 onResolutionChange = onResolutionChange,
                 onFpsChange = onFpsChange,
                 onBitrateChange = onBitrateChange,
@@ -265,6 +268,7 @@ private fun ServerCard(
 @Composable
 private fun EncodingCard(
     settings: StreamSettings,
+    encoderChoice: EncoderChoice?,
     onResolutionChange: (VideoResolution) -> Unit,
     onFpsChange: (Int) -> Unit,
     onBitrateChange: (Int) -> Unit,
@@ -303,6 +307,28 @@ private fun EncodingCard(
             valueRange = 0.5f..12f,
             steps = 22,
             enabled = enabled,
+        )
+        if (encoderChoice != null) BitrateModeNote(encoderChoice)
+    }
+}
+
+@Composable
+private fun BitrateModeNote(choice: EncoderChoice) {
+    when {
+        choice.mode == BitrateMode.VBR -> Text(
+            "⚠ Este aparelho não tem encoder H.264 com bitrate constante (CBR): " +
+                "a taxa vai variar com a cena. Encoder: ${choice.name}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+        )
+        choice.hardware -> Text(
+            "Bitrate constante (CBR) • encoder de hardware ${choice.name}",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        else -> Text(
+            "Bitrate constante (CBR) via encoder de software (${choice.name}). " +
+                "É mais pesado: se a imagem engasgar, use 1280×720.",
+            style = MaterialTheme.typography.bodySmall,
         )
     }
 }

@@ -14,9 +14,12 @@ import com.b2tech.fimirtsp.settings.RtspTransport
 import com.b2tech.fimirtsp.settings.SettingsRepository
 import com.b2tech.fimirtsp.settings.StreamSettings
 import com.b2tech.fimirtsp.settings.VideoResolution
+import com.b2tech.fimirtsp.streaming.EncoderChoice
+import com.b2tech.fimirtsp.streaming.EncoderProbe
 import com.b2tech.fimirtsp.streaming.StreamService
 import com.b2tech.fimirtsp.streaming.StreamState
 import com.b2tech.fimirtsp.validation.StreamUrlValidator
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -32,6 +35,8 @@ data class UiState(
     val bitrateSampleBps: Long,
     val reconnectAttempts: Int,
     val awaitingProjection: Boolean,
+    /** Encoder e modo de bitrate (CBR/VBR) que a transmissão vai usar; null até a sondagem terminar. */
+    val encoderChoice: EncoderChoice?,
 ) {
     val urlIsValid: Boolean get() = urlError == null && settings.serverUrl.isNotBlank()
 }
@@ -42,6 +47,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val connectivity = ConnectivityMonitor(app)
 
     private val projectionRequestFlag = MutableStateFlow(false)
+
+    private val encoderChoice = MutableStateFlow<EncoderChoice?>(null)
+
+    init {
+        // MediaCodecList é síncrona e pode levar dezenas de ms: fora da main thread.
+        viewModelScope.launch(Dispatchers.Default) { encoderChoice.value = EncoderProbe.probe() }
+    }
 
     // Compõe os StateFlows do serviço em um só Triple para caber no combine tipado (5 args).
     private val serviceOutputs = combine(
@@ -55,7 +67,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         serviceOutputs,
         connectivity.observe(),
         projectionRequestFlag,
-    ) { settings, triple, conn, awaiting ->
+        encoderChoice,
+    ) { settings, triple, conn, awaiting, encoder ->
         UiState(
             settings = settings,
             urlError = StreamUrlValidator.validate(settings.serverUrl).error,
@@ -64,6 +77,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             bitrateSampleBps = triple.second,
             reconnectAttempts = triple.third,
             awaitingProjection = awaiting,
+            encoderChoice = encoder,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -85,6 +99,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             bitrateSampleBps = 0L,
             reconnectAttempts = 0,
             awaitingProjection = false,
+            encoderChoice = null,
         ),
     )
 
