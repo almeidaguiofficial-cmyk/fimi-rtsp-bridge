@@ -10,6 +10,7 @@ import com.b2tech.fimirtsp.BuildConfig
 import com.b2tech.fimirtsp.FimiApp
 import com.b2tech.fimirtsp.network.Connectivity
 import com.b2tech.fimirtsp.network.ConnectivityMonitor
+import com.b2tech.fimirtsp.settings.QualityPreset
 import com.b2tech.fimirtsp.settings.RtspTransport
 import com.b2tech.fimirtsp.settings.SettingsRepository
 import com.b2tech.fimirtsp.settings.StreamSettings
@@ -132,6 +133,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 )
             )
         }
+    }
+
+    /** Uma só gravação: resolução, fps e bitrate mudam juntos. */
+    fun applyMaxQuality() = viewModelScope.launch {
+        settingsRepo.update { QualityPreset.applyTo(it) }
     }
 
     fun updateTransport(v: RtspTransport) = viewModelScope.launch {

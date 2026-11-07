@@ -44,6 +44,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import com.b2tech.fimirtsp.settings.QualityPreset
 import com.b2tech.fimirtsp.settings.RtspTransport
 import com.b2tech.fimirtsp.settings.StreamSettings
 import com.b2tech.fimirtsp.settings.VideoResolution
@@ -62,6 +63,7 @@ fun MainScreen(
     onResolutionChange: (VideoResolution) -> Unit,
     onFpsChange: (Int) -> Unit,
     onBitrateChange: (Int) -> Unit,
+    onApplyMaxQuality: () -> Unit,
     onTransportChange: (RtspTransport) -> Unit,
     onAuthorizeAndStart: () -> Unit,
     onStop: () -> Unit,
@@ -113,6 +115,7 @@ fun MainScreen(
                 onResolutionChange = onResolutionChange,
                 onFpsChange = onFpsChange,
                 onBitrateChange = onBitrateChange,
+                onApplyMaxQuality = onApplyMaxQuality,
                 enabled = !busy,
             )
 
@@ -272,9 +275,29 @@ private fun EncodingCard(
     onResolutionChange: (VideoResolution) -> Unit,
     onFpsChange: (Int) -> Unit,
     onBitrateChange: (Int) -> Unit,
+    onApplyMaxQuality: () -> Unit,
     enabled: Boolean,
 ) {
     SectionCard(title = "Codificação") {
+        if (QualityPreset.isActive(settings)) {
+            Text(
+                "✓ Qualidade máxima: 1080p • 30 fps • 8 Mbps constante (CBR)",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        } else {
+            Button(
+                onClick = onApplyMaxQuality,
+                enabled = enabled,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Usar qualidade máxima (1080p • 30 fps • 8 Mbps CBR)")
+            }
+        }
+        Text(
+            "8 Mbps constantes pedem upload estável acima de 10 Mbps. Se travar no 4G, baixe o bitrate.",
+            style = MaterialTheme.typography.bodySmall,
+        )
         Text("Resolução", style = MaterialTheme.typography.labelLarge)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             VideoResolution.entries.forEach { res ->

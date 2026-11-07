@@ -16,6 +16,8 @@ Testado com o padrão de captura já em produção no Skywatch Cast (RootEncoder
 - **Bitrate constante (CBR)**: o encoder é escolhido com prioridade para CBR
   (hardware CBR > software CBR > hardware > software). O cartão *Codificação*
   mostra qual encoder o aparelho usa e avisa em vermelho se nenhum suporta CBR.
+- **Qualidade máxima** com um toque: 1920×1080, 30 fps, 8 Mbps constantes.
+  Pede upload estável acima de 10 Mbps; no 4G fraco, baixe o bitrate.
 - Publica em `rtsp://SERVIDOR:8554/fimi` **ou** `rtmp://SERVIDOR:1935/live/ID?key=...`
   (o app escolhe RTSP/RTMP pelo esquema da URL; `rtsps://` e `rtmps://` também valem).
 - Roda em **Foreground Service tipo mediaProjection**, notificação persistente
@@ -267,6 +269,7 @@ Cobrem:
 - `PlayerErrorClassifierTest` — retry vs. fatal por código de erro do Media3.
 - `EncoderSelectionTest` — prioridade CBR na escolha do encoder e modo CBR/VBR.
 - `FimiLauncherTest` — detecção do app FIMI de todos os modelos (pacote e nome).
+- `QualityPresetTest` — modo qualidade máxima (1080p, 30 fps, 8 Mbps) sem tocar na URL.
 - `LogSanitizerTest` — senha nunca vaza em log ou toast (inclui `?pass=` do RTMP).
 - `BitrateBoundsTest` — clamp de bitrate 300 kbps..20 Mbps.
 
