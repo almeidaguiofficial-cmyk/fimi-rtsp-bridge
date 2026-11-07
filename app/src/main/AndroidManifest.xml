@@ -10,9 +10,10 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <!--
-      Precisamos enxergar o pacote do FIMI Navi (queryable) para o botão "Abrir FIMI Navi".
-      Sem QUERY_ALL_PACKAGES: buscamos aplicativos com categoria LAUNCHER e filtramos pelo
-      nome visível "FIMI Navi", respeitando o package visibility do Android 11+.
+      Precisamos enxergar o app da FIMI (queryable) para o botão "Abrir FIMI Navi".
+      Sem QUERY_ALL_PACKAGES: buscamos aplicativos com categoria LAUNCHER e o FimiLauncher
+      filtra por pacote com.fimi.* ou nome contendo "fimi" (qualquer modelo), respeitando
+      o package visibility do Android 11+.
     -->
     <queries>
         <intent>

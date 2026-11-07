@@ -1,6 +1,7 @@
 # FIMI RTSP Bridge
 
-App Android que espelha a tela do celular durante o uso do **FIMI Navi 3.0** e
+App Android que espelha a tela do celular durante o uso do app do drone FIMI
+(**qualquer modelo**: X8 Pro, X8 SE, X8 Mini, Tele Max…) e
 publica o vídeo por **RTSP ou RTMP** para um servidor (MediaMTX, Skywatch,
 OBS Studio como cliente, NVR, etc.). Serve como ponte pra sacar do FIMI Navi um
 sinal ao vivo que outras ferramentas conseguem ler — VLC, OBS, câmeras IP
@@ -46,7 +47,10 @@ Testado com o padrão de captura já em produção no Skywatch Cast (RootEncoder
 - Android 9 (API 28) ou superior — o app tira melhor proveito do Android 14+,
   que deixa você escolher apenas a janela do FIMI Navi na tela de consentimento
   do MediaProjection.
-- FIMI Navi 3.0 instalado e funcional com o drone/controle.
+- App da FIMI do seu modelo instalado e funcional com o drone/controle.
+  A transmissão não depende do modelo: o app captura a tela, não fala com o
+  drone. O botão "Abrir FIMI Navi" reconhece o app por pacote `com.fimi.*`
+  ou pelo nome; se não achar, abra o app do drone pela tela inicial.
 - Servidor RTSP alcançável — recomendamos rodar o MediaMTX do `server/`.
 
 ## Como compilar
@@ -262,6 +266,7 @@ Cobrem:
 - `PlayerStateMachineTest` — transições esperadas e proibidas (reprodutor).
 - `PlayerErrorClassifierTest` — retry vs. fatal por código de erro do Media3.
 - `EncoderSelectionTest` — prioridade CBR na escolha do encoder e modo CBR/VBR.
+- `FimiLauncherTest` — detecção do app FIMI de todos os modelos (pacote e nome).
 - `LogSanitizerTest` — senha nunca vaza em log ou toast (inclui `?pass=` do RTMP).
 - `BitrateBoundsTest` — clamp de bitrate 300 kbps..20 Mbps.
 

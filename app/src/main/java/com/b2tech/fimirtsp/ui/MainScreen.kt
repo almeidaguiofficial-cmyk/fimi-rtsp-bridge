@@ -370,7 +370,8 @@ private fun ActionsCard(
         }
         if (!fimiFound) {
             Text(
-                "Não encontrei o FIMI Navi instalado. Instale-o pela Play Store ou APK oficial e volte aqui.",
+                "Não encontrei o app da FIMI. A transmissão funciona mesmo assim, com qualquer modelo: " +
+                    "inicie aqui e abra o app do seu drone pela tela inicial.",
                 style = MaterialTheme.typography.bodySmall,
             )
         }
@@ -416,6 +417,10 @@ private fun SecurityFooter() {
             )
             Text(
                 "Este app não controla o drone e não modifica o FIMI Navi. Ele só espelha a tela e publica no servidor.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Text(
+                "Por isso funciona com qualquer modelo FIMI (X8 Pro, X8 SE, X8 Mini, Tele Max) e com app de drone de outra marca.",
                 style = MaterialTheme.typography.bodySmall,
             )
         }
