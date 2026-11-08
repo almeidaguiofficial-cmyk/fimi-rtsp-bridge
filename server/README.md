@@ -18,6 +18,7 @@ O MediaMTX passa a escutar em:
 
 - `rtsp://SEU_HOST:8554/fimi`  ← endpoint que o app publica
 - `rtsp://SEU_HOST:8554/fimi`  ← endpoint que VLC/OBS/NVR consomem
+- `rtmp://SEU_HOST:1935/fimi`  ← RTMP (publicação e leitura, ex.: aba Assistir)
 - `http://SEU_HOST:8888/fimi/index.m3u8` ← HLS
 - `http://SEU_HOST:8889/fimi` ← WebRTC
 
@@ -49,11 +50,38 @@ reduzir a latência interna do VLC ainda mais, adicione `--network-caching=200`.
 
 Abra `http://SEU_HOST:8889/fimi` em qualquer navegador moderno. Latência típica < 500 ms.
 
+## Assistir no próprio app (aba Assistir)
+
+O APK tem uma aba **Assistir** que reproduz o stream em outro celular na mesma rede.
+As duas URLs aceitas — atenção que a forma de passar credencial muda por protocolo:
+
+- **RTSP** (recomendado na LAN, menor latência) — credencial em `user:pass@`:
+
+  ```
+  rtsp://reader:EscolhaOutraSenhaForte@SEU_HOST:8554/fimi
+  ```
+
+- **RTMP** — credencial na **query string** (`user:pass@` NÃO funciona no RTMP:
+  o librtmp do player não converte userinfo em nada que o MediaMTX autentique):
+
+  ```
+  rtmp://SEU_HOST:1935/fimi?user=reader&pass=EscolhaOutraSenhaForte
+  ```
+
+Senha com caractere especial precisa de percent-encoding (ex.: `@` → `%40`).
+
+Teste rápido no PC:
+
+```bash
+ffplay -fflags nobuffer -flags low_delay "rtmp://localhost:1935/fimi?user=reader&pass=EscolhaOutraSenhaForte"
+```
+
 ## Portas explicadas
 
 | Porta       | Uso                     | Expor?                        |
 |-------------|-------------------------|-------------------------------|
 | 8554/tcp    | RTSP publicação/leitura | Somente para clientes         |
+| 1935/tcp    | RTMP publicação/leitura | Somente para clientes         |
 | 8322/tcp    | RTSPS (opcional, TLS)   | Somente com certificado válido|
 | 8888/tcp    | HLS                     | Se quiser player web/OBS      |
 | 8889/tcp    | WebRTC (WHIP/WHEP)      | Se quiser player web          |

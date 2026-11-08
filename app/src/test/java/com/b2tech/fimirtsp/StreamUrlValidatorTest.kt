@@ -80,4 +80,32 @@ class StreamUrlValidatorTest {
     @Test fun family_nula_quando_invalido() {
         assertEquals(null, StreamUrlValidator.validate("http://x/y").family)
     }
+
+    // --- validateForPlayback (aba Assistir) ---
+
+    @Test fun player_aceita_rtsp_e_rtmp() {
+        assertTrue(StreamUrlValidator.validateForPlayback("rtsp://reader:senha@192.168.1.100:8554/fimi").ok)
+        assertTrue(StreamUrlValidator.validateForPlayback("rtmp://192.168.1.100:1935/fimi?user=reader&pass=x").ok)
+    }
+
+    @Test fun player_rejeita_rtsps_e_rtmps() {
+        val rtsps = StreamUrlValidator.validateForPlayback("rtsps://host:8322/fimi")
+        assertFalse(rtsps.ok)
+        assertTrue(rtsps.error!!.contains("rtsps"))
+        val rtmps = StreamUrlValidator.validateForPlayback("rtmps://host:443/live/x")
+        assertFalse(rtmps.ok)
+        assertTrue(rtmps.error!!.contains("rtmps"))
+    }
+
+    @Test fun player_rejeita_url_sem_caminho_ou_esquema() {
+        assertFalse(StreamUrlValidator.validateForPlayback("rtsp://192.168.1.100:8554").ok)
+        assertFalse(StreamUrlValidator.validateForPlayback("http://x/y").ok)
+        assertFalse(StreamUrlValidator.validateForPlayback("").ok)
+    }
+
+    @Test fun validate_original_continua_aceitando_rtmps_para_publicar() {
+        // Regressão: restringir o player não pode restringir o publicador.
+        assertTrue(StreamUrlValidator.validate("rtmps://rtmps.exemplo.com:443/live/abc?key=sk_1").ok)
+        assertTrue(StreamUrlValidator.validate("rtsps://media.exemplo.com/fimi").ok)
+    }
 }

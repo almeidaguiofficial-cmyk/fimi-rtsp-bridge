@@ -84,4 +84,22 @@ object StreamUrlValidator {
     }
 
     fun isValid(input: String?): Boolean = validate(input).ok
+
+    /**
+     * Validação para a aba Assistir: o reprodutor (Media3) só suporta rtsp:// e
+     * rtmp:// — a extensão RTMP (librtmp) não faz rtmps, e o módulo RTSP não faz
+     * rtsps. A validação de publicação (validate) continua aceitando os quatro.
+     */
+    fun validateForPlayback(input: String?): Result {
+        val r = validate(input)
+        if (!r.ok) return r
+        return when (r.scheme) {
+            "rtsp", "rtmp" -> r
+            else -> Result(
+                false,
+                "O reprodutor não suporta ${r.scheme}:// — use rtsp:// ou rtmp://",
+                r.scheme,
+            )
+        }
+    }
 }

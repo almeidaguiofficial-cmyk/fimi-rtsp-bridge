@@ -2,6 +2,7 @@ package com.b2tech.fimirtsp.streaming
 
 import android.content.Intent
 import com.b2tech.fimirtsp.settings.RtspTransport
+import com.b2tech.fimirtsp.settings.VideoCodecPref
 
 /**
  * Contrato do motor de transmissão. A implementação atual usa a RootEncoder,
@@ -33,9 +34,11 @@ interface StreamEngine {
         val password: String,
         /** Pares (w, h) que o motor pode tentar caso o encoder recuse a resolução alvo. */
         val fallbackSizes: List<Pair<Int, Int>>,
+        /** Codec pedido; H.265 cai para H.264 se o aparelho não tiver encoder (CodecPlan). */
+        val codec: VideoCodecPref = VideoCodecPref.H264,
     )
 
-    /** Prepara vídeo + captura de tela; devolve a resolução que foi aceita. */
+    /** Prepara vídeo + captura de tela; devolve a resolução e o codec que foram aceitos. */
     fun prepare(request: PrepareRequest): PrepareResult
 
     /**
@@ -65,7 +68,7 @@ interface StreamEngine {
     fun setListener(listener: Listener?)
 
     sealed interface PrepareResult {
-        data class Ok(val width: Int, val height: Int) : PrepareResult
+        data class Ok(val width: Int, val height: Int, val codec: VideoCodecPref) : PrepareResult
         data class Failed(val reason: String) : PrepareResult
     }
 }

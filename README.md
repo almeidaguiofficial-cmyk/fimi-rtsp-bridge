@@ -1,6 +1,7 @@
 # FIMI RTSP Bridge
 
-App Android que espelha a tela do celular durante o uso do **FIMI Navi 3.0** e
+App Android que espelha a tela do celular durante o uso do app do drone FIMI
+(**qualquer modelo**: X8 Pro, X8 SE, X8 Mini, Tele Max…) e
 publica o vídeo por **RTSP ou RTMP** para um servidor (MediaMTX, Skywatch,
 OBS Studio como cliente, NVR, etc.). Serve como ponte pra sacar do FIMI Navi um
 sinal ao vivo que outras ferramentas conseguem ler — VLC, OBS, câmeras IP
@@ -12,6 +13,14 @@ Testado com o padrão de captura já em produção no Skywatch Cast (RootEncoder
 
 - Pega a tela do celular (ou só a janela do FIMI Navi no Android 14+).
 - Codifica em **H.264 por hardware**, GOP de 1s, sem B-frames, sem áudio.
+- **Bitrate constante (CBR)**: o encoder é escolhido com prioridade para CBR
+  (hardware CBR > software CBR > hardware > software). O cartão *Codificação*
+  mostra qual encoder o aparelho usa e avisa em vermelho se nenhum suporta CBR.
+- **Qualidade máxima** com um toque: 1920×1080, 30 fps, 8 Mbps constantes, em H.265.
+  Pede upload estável acima de 10 Mbps; no 4G fraco, baixe o bitrate.
+- **H.265 (HEVC)** opcional: imagem melhor no mesmo bitrate. Usa só encoder de
+  hardware (CBR quando o chip suporta); sem HEVC no aparelho, cai sozinho para H.264
+  e a tela avisa. Pelo RTMP vai como Enhanced RTMP (`hvc1`).
 - Publica em `rtsp://SERVIDOR:8554/fimi` **ou** `rtmp://SERVIDOR:1935/live/ID?key=...`
   (o app escolhe RTSP/RTMP pelo esquema da URL; `rtsps://` e `rtmps://` também valem).
 - Roda em **Foreground Service tipo mediaProjection**, notificação persistente
@@ -21,6 +30,9 @@ Testado com o padrão de captura já em produção no Skywatch Cast (RootEncoder
   autorização de captura a cada queda.
 - RTSP: transporte **TCP** (padrão) ou **UDP**. RTMP: sempre TCP.
 - Aceita usuário/senha (Basic/Digest no RTSP; auth RTMP, o que a lib negociar).
+- **Aba Assistir**: o mesmo APK também é player — em outro celular na rede,
+  reproduz o stream via `rtsp://` ou `rtmp://` com Media3/ExoPlayer, buffers
+  curtos (baixa latência) e reconexão automática com o mesmo backoff.
 - Sem áudio de verdade: o cliente é configurado como *only video*, então o servidor
   não recebe uma faixa de áudio silenciosa (evita travar HLS no MediaMTX).
 - Valida a URL antes de iniciar; nunca escreve senha em log.
@@ -40,7 +52,10 @@ Testado com o padrão de captura já em produção no Skywatch Cast (RootEncoder
 - Android 9 (API 28) ou superior — o app tira melhor proveito do Android 14+,
   que deixa você escolher apenas a janela do FIMI Navi na tela de consentimento
   do MediaProjection.
-- FIMI Navi 3.0 instalado e funcional com o drone/controle.
+- App da FIMI do seu modelo instalado e funcional com o drone/controle.
+  A transmissão não depende do modelo: o app captura a tela, não fala com o
+  drone. O botão "Abrir FIMI Navi" reconhece o app por pacote `com.fimi.*`
+  ou pelo nome; se não achar, abra o app do drone pela tela inicial.
 - Servidor RTSP alcançável — recomendamos rodar o MediaMTX do `server/`.
 
 ## Como compilar
@@ -124,6 +139,29 @@ docker compose up -d
 8. Pra parar: use o botão do app **ou** a ação **Parar transmissão** da
    notificação persistente.
 
+## Assistir no próprio app (aba Assistir)
+
+Instale o mesmo APK num segundo celular/tablet na mesma rede e abra a aba
+**Assistir**:
+
+1. Informe o endereço da transmissão:
+   - RTSP (recomendado na LAN — atraso ~0,5–1 s):
+     `rtsp://reader:SENHA@IP_DO_SERVIDOR:8554/fimi`
+   - RTMP (atraso típico 1–3 s; credencial vai na **query**, não em `user:pass@`):
+     `rtmp://IP_DO_SERVIDOR:1935/fimi?user=reader&pass=SENHA`
+2. Toque em **Assistir**. O vídeo abre no player embutido (Media3/ExoPlayer,
+   buffers curtos, sem controles de seek — é ao vivo).
+3. Com **Reconectar automaticamente** ligado (padrão), o player fica tentando
+   com backoff 1→2→4→8→15 s enquanto o feed não sobe, e religa sozinho se a
+   transmissão cair e voltar — útil pra deixar o tablet como monitor de voo.
+4. A tela fica acesa enquanto reproduz. Trocar de aba ou minimizar o app para
+   e libera o player (não há reprodução em background).
+
+O reprodutor **não** suporta `rtsps://`/`rtmps://` (limitação das extensões
+RTSP/RTMP do Media3) — fora da LAN, use VPN. O RTMP usa o librtmp via
+`media3-datasource-rtmp`; se a biblioteca nativa não carregar no seu aparelho
+(kernels com páginas de 16 KB), o app avisa e o caminho é usar `rtsp://`.
+
 ## Usar com um servidor RTMP (ex.: Skywatch)
 
 1. No painel do servidor, copie a **URL completa de publicação** do drone —
@@ -157,6 +195,12 @@ Wi-Fi como padrão. Desligue o hotspot se quiser garantir 4G/5G, ou vice-versa.
 
 ## Limitações
 
+- **H.265 depende do servidor**: pelo RTMP só passa em servidor com Enhanced RTMP
+  (YouTube e MediaMTX recentes). Facebook e servidores antigos recusam: use H.264.
+  RTSP e SRT levam H.265 normalmente.
+- **A aba Assistir não abre H.265 por RTMP**: o extrator FLV do Media3 só aceita
+  H.264. Para assistir H.265, use o endereço RTSP do servidor.
+
 - **Android < 14**: o consentimento de MediaProjection captura a tela inteira
   — se você abrir notificações, elas aparecem no vídeo. Habitue-se ao “não
   perturbe” durante voo.
@@ -169,6 +213,12 @@ Wi-Fi como padrão. Desligue o hotspot se quiser garantir 4G/5G, ou vice-versa.
 - **Bateria e temperatura**: encoder de vídeo por 30–60 min esquenta o celular.
   Recomendamos ventilação, sem case e brilho reduzido.
 - **RTSP simples é texto puro na rede** — use VPN/tunel/RTSPS ao sair da LAN.
+- **CBR no Android não é CBR de broadcast**: o `MediaCodec` controla a taxa
+  por janela, mas não preenche bits de enchimento. Em cena parada (FIMI Navi
+  em menu, drone pousado) a taxa ainda pode cair abaixo do alvo, e cada
+  keyframe (1/s) é um pico curto. O "Bitrate agora" mede o envio pela rede,
+  então também oscila com o buffer do TCP. Em voo, com imagem em movimento,
+  a taxa fica colada no alvo.
 
 ## Arquitetura
 
@@ -177,8 +227,11 @@ app/
 ├── FimiApp.kt                        # Application; expõe SettingsRepository
 ├── ui/
 │   ├── MainActivity.kt               # Activity + ActivityResult (MediaProjection)
-│   ├── MainScreen.kt                 # Tela Compose Material 3
+│   ├── AppRoot.kt                    # Abas Transmitir/Assistir (NavigationBar)
+│   ├── MainScreen.kt                 # Aba Transmitir (Compose Material 3)
 │   ├── MainViewModel.kt              # StateFlow<UiState>, StateFlow do serviço
+│   ├── PlayerScreen.kt               # Aba Assistir (PlayerView + status)
+│   ├── PlayerViewModel.kt            # Dono do ExoPlayer; reconexão com Backoff
 │   ├── FimiLauncher.kt               # Busca FIMI Navi entre pacotes
 │   └── theme/Theme.kt                # Material 3 dinâmico + light/dark
 ├── streaming/
@@ -186,11 +239,19 @@ app/
 │   ├── ProjectionController.kt       # Sessão do MediaProjection
 │   ├── StreamEngine.kt               # Contrato do motor
 │   ├── RootEncoderStreamEngine.kt    # RootEncoder GenericStream (rtsp/rtsps/rtmp/rtmps)
-│   ├── StreamState.kt                # Máquina de estados
-│   └── Backoff.kt                    # 1,2,4,8,15s
+│   ├── StreamState.kt                # Máquina de estados (publicador)
+│   ├── EncoderSelection.kt           # Regra CBR_PRIORITY (pura, testada)
+│   ├── EncoderProbe.kt               # Lê os encoders H.264/H.265 do aparelho
+│   ├── CodecPlan.kt                  # H.265 → H.264, HEVC só em hardware (puro, testado)
+│   └── Backoff.kt                    # 1,2,4,8,15s (compartilhado com o player)
+├── player/
+│   ├── PlayerState.kt                # Máquina de estados do reprodutor
+│   ├── PlayerErrorClassifier.kt      # RETRY/RETRY_IMMEDIATE/FATAL por errorCode
+│   └── PlayerMediaSources.kt         # rtmp→Progressive/FLV, rtsp→RTSP TCP
 ├── network/ConnectivityMonitor.kt
 ├── settings/SettingsRepository.kt    # DataStore
-├── validation/StreamUrlValidator.kt  # rtsp/rtsps/rtmp/rtmps
+├── settings/QualityPreset.kt         # Qualidade máxima (1080p30, 8 Mbps, H.265)
+├── validation/StreamUrlValidator.kt  # rtsp/rtsps/rtmp/rtmps (+ restrição do player)
 └── util/{LogSanitizer,ScreenUtils}.kt
 ```
 
@@ -211,10 +272,17 @@ Qualquer estado → Stopping → Idle
 
 Cobrem:
 
-- `StreamUrlValidatorTest` — RTSP/RTSPS/RTMP/RTMPS, `?key=`, IPv6, userinfo, portas, caminhos.
+- `StreamUrlValidatorTest` — RTSP/RTSPS/RTMP/RTMPS, `?key=`, IPv6, userinfo, portas,
+  caminhos; restrição do player a rtsp/rtmp sem afetar o publicador.
 - `BackoffTest` — 1, 2, 4, 8, 15s (saturado).
-- `StreamStateMachineTest` — transições esperadas e proibidas.
-- `LogSanitizerTest` — senha nunca vaza em log ou toast.
+- `StreamStateMachineTest` — transições esperadas e proibidas (publicador).
+- `PlayerStateMachineTest` — transições esperadas e proibidas (reprodutor).
+- `PlayerErrorClassifierTest` — retry vs. fatal por código de erro do Media3.
+- `EncoderSelectionTest` — prioridade CBR na escolha do encoder e modo CBR/VBR.
+- `FimiLauncherTest` — detecção do app FIMI de todos os modelos (pacote e nome).
+- `QualityPresetTest` — modo qualidade máxima (1080p, 30 fps, 8 Mbps, H.265) sem tocar na URL.
+- `CodecPlanTest` — H.265 cai para H.264 sem encoder, nunca usa HEVC de software.
+- `LogSanitizerTest` — senha nunca vaza em log ou toast (inclui `?pass=` do RTMP).
 - `BitrateBoundsTest` — clamp de bitrate 300 kbps..20 Mbps.
 
 ## Segurança
@@ -232,4 +300,6 @@ Cobrem:
 
 - [RootEncoder](https://github.com/pedroSG94/RootEncoder) — pipeline de
   encoder/streaming.
-- [MediaMTX](https://github.com/bluenviron/mediamtx) — servidor RTSP/RTSPS/HLS/WebRTC.
+- [Media3/ExoPlayer](https://github.com/androidx/media) — reprodutor da aba
+  Assistir (módulos `exoplayer`, `exoplayer-rtsp`, `datasource-rtmp`, `ui`).
+- [MediaMTX](https://github.com/bluenviron/mediamtx) — servidor RTSP/RTSPS/RTMP/HLS/WebRTC.

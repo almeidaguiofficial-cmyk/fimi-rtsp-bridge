@@ -8,6 +8,8 @@ services:
       - "8554:8554"
       # RTSPS (RTSP com TLS) — descomente e forneça certificado para usar
       # - "8322:8322"
+      # RTMP publicação e leitura (aba Assistir do app)
+      - "1935:1935"
       # WebRTC (WHIP/WHEP) — permite abrir a stream direto no navegador
       - "8889:8889"
       - "8189:8189/udp"

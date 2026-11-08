@@ -10,13 +10,18 @@ import com.b2tech.fimirtsp.BuildConfig
 import com.b2tech.fimirtsp.FimiApp
 import com.b2tech.fimirtsp.network.Connectivity
 import com.b2tech.fimirtsp.network.ConnectivityMonitor
+import com.b2tech.fimirtsp.settings.QualityPreset
 import com.b2tech.fimirtsp.settings.RtspTransport
 import com.b2tech.fimirtsp.settings.SettingsRepository
 import com.b2tech.fimirtsp.settings.StreamSettings
+import com.b2tech.fimirtsp.settings.VideoCodecPref
 import com.b2tech.fimirtsp.settings.VideoResolution
+import com.b2tech.fimirtsp.streaming.EncoderChoice
+import com.b2tech.fimirtsp.streaming.EncoderProbe
 import com.b2tech.fimirtsp.streaming.StreamService
 import com.b2tech.fimirtsp.streaming.StreamState
 import com.b2tech.fimirtsp.validation.StreamUrlValidator
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -32,6 +37,13 @@ data class UiState(
     val bitrateSampleBps: Long,
     val reconnectAttempts: Int,
     val awaitingProjection: Boolean,
+    /**
+     * Encoder e modo de bitrate (CBR/VBR) por codec; null até a sondagem terminar.
+     * Valor null dentro do mapa = o aparelho não tem encoder daquele codec.
+     */
+    val encoderChoices: Map<VideoCodecPref, EncoderChoice?>?,
+    /** Codec que o encoder aceitou na transmissão atual; null fora de transmissão. */
+    val activeCodec: VideoCodecPref?,
 ) {
     val urlIsValid: Boolean get() = urlError == null && settings.serverUrl.isNotBlank()
 }
@@ -43,27 +55,47 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val projectionRequestFlag = MutableStateFlow(false)
 
-    // Compõe os StateFlows do serviço em um só Triple para caber no combine tipado (5 args).
+    private val encoderChoices = MutableStateFlow<Map<VideoCodecPref, EncoderChoice?>?>(null)
+
+    init {
+        // MediaCodecList é síncrona e pode levar dezenas de ms: fora da main thread.
+        viewModelScope.launch(Dispatchers.Default) {
+            encoderChoices.value = VideoCodecPref.entries.associateWith { EncoderProbe.probe(it) }
+        }
+    }
+
+    private data class ServiceOutputs(
+        val state: StreamState,
+        val bps: Long,
+        val attempts: Int,
+        val codec: VideoCodecPref?,
+    )
+
+    // Compõe os StateFlows do serviço num só valor para caber no combine tipado (5 args).
     private val serviceOutputs = combine(
         StreamService.state,
         StreamService.statsBps,
         StreamService.reconnectAttempts,
-    ) { st, bps, attempts -> Triple(st, bps, attempts) }
+        StreamService.activeCodec,
+    ) { st, bps, attempts, codec -> ServiceOutputs(st, bps, attempts, codec) }
 
     val state: StateFlow<UiState> = combine(
         settingsRepo.settings,
         serviceOutputs,
         connectivity.observe(),
         projectionRequestFlag,
-    ) { settings, triple, conn, awaiting ->
+        encoderChoices,
+    ) { settings, service, conn, awaiting, encoders ->
         UiState(
             settings = settings,
             urlError = StreamUrlValidator.validate(settings.serverUrl).error,
-            engineState = triple.first,
+            engineState = service.state,
             connectivity = conn,
-            bitrateSampleBps = triple.second,
-            reconnectAttempts = triple.third,
+            bitrateSampleBps = service.bps,
+            reconnectAttempts = service.attempts,
             awaitingProjection = awaiting,
+            encoderChoices = encoders,
+            activeCodec = service.codec,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -85,6 +117,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             bitrateSampleBps = 0L,
             reconnectAttempts = 0,
             awaitingProjection = false,
+            encoderChoices = null,
+            activeCodec = null,
         ),
     )
 
@@ -117,6 +151,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 )
             )
         }
+    }
+
+    /** Uma só gravação: resolução, fps, bitrate e codec mudam juntos. */
+    fun applyMaxQuality() = viewModelScope.launch {
+        settingsRepo.update { QualityPreset.applyTo(it) }
+    }
+
+    fun updateVideoCodec(v: VideoCodecPref) = viewModelScope.launch {
+        settingsRepo.update { it.copy(videoCodec = v) }
     }
 
     fun updateTransport(v: RtspTransport) = viewModelScope.launch {

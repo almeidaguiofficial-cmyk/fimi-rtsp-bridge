@@ -24,6 +24,20 @@ enum class VideoResolution(val width: Int, val height: Int, val label: String) {
     }
 }
 
+/**
+ * Codec de vídeo. H.265 dá imagem melhor no mesmo bitrate, mas pelo RTMP só passa em
+ * servidor com Enhanced RTMP. Padrão H.264: instalação antiga continua como estava.
+ */
+enum class VideoCodecPref(val label: String, val mime: String) {
+    H264("H.264", "video/avc"),
+    H265("H.265 (HEVC)", "video/hevc");
+
+    companion object {
+        fun fromName(name: String?): VideoCodecPref =
+            entries.firstOrNull { it.name == name } ?: H264
+    }
+}
+
 data class StreamSettings(
     val serverUrl: String,
     val rtspUser: String,
@@ -33,6 +47,11 @@ data class StreamSettings(
     val bitrateBps: Int,
     val transport: RtspTransport,
     val stopOnTaskRemoved: Boolean,
+    // Aba Assistir. Default vazio de propósito: DEFAULT_STREAM_URL é credencial
+    // de publicação e não deve pré-preencher o reprodutor.
+    val playerUrl: String = "",
+    val playerAutoReconnect: Boolean = true,
+    val videoCodec: VideoCodecPref = VideoCodecPref.H264,
 ) {
     companion object {
         const val MIN_BITRATE_BPS = 300_000
@@ -58,6 +77,9 @@ class SettingsRepository(private val context: Context) {
         val BITRATE = intPreferencesKey("bitrate_bps")
         val TRANSPORT = stringPreferencesKey("transport")
         val STOP_ON_TASK_REMOVED = booleanPreferencesKey("stop_on_task_removed")
+        val PLAYER_URL = stringPreferencesKey("player_url")
+        val PLAYER_AUTO_RECONNECT = booleanPreferencesKey("player_auto_reconnect")
+        val VIDEO_CODEC = stringPreferencesKey("video_codec")
     }
 
     val settings: Flow<StreamSettings> = context.dataStore.data.map { prefs ->
@@ -77,6 +99,9 @@ class SettingsRepository(private val context: Context) {
                 else -> RtspTransport.TCP
             },
             stopOnTaskRemoved = prefs[Keys.STOP_ON_TASK_REMOVED] ?: true,
+            playerUrl = prefs[Keys.PLAYER_URL].orEmpty(),
+            playerAutoReconnect = prefs[Keys.PLAYER_AUTO_RECONNECT] ?: true,
+            videoCodec = VideoCodecPref.fromName(prefs[Keys.VIDEO_CODEC]),
         )
     }
 
@@ -94,6 +119,9 @@ class SettingsRepository(private val context: Context) {
                     else -> RtspTransport.TCP
                 },
                 stopOnTaskRemoved = prefs[Keys.STOP_ON_TASK_REMOVED] ?: true,
+                playerUrl = prefs[Keys.PLAYER_URL].orEmpty(),
+                playerAutoReconnect = prefs[Keys.PLAYER_AUTO_RECONNECT] ?: true,
+                videoCodec = VideoCodecPref.fromName(prefs[Keys.VIDEO_CODEC]),
             )
             val next = transform(current)
             prefs[Keys.URL] = next.serverUrl
@@ -105,6 +133,9 @@ class SettingsRepository(private val context: Context) {
                 .coerceIn(StreamSettings.MIN_BITRATE_BPS, StreamSettings.MAX_BITRATE_BPS)
             prefs[Keys.TRANSPORT] = next.transport.name
             prefs[Keys.STOP_ON_TASK_REMOVED] = next.stopOnTaskRemoved
+            prefs[Keys.PLAYER_URL] = next.playerUrl
+            prefs[Keys.PLAYER_AUTO_RECONNECT] = next.playerAutoReconnect
+            prefs[Keys.VIDEO_CODEC] = next.videoCodec.name
         }
     }
 }

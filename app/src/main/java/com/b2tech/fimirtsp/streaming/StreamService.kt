@@ -17,6 +17,7 @@ import com.b2tech.fimirtsp.R
 import com.b2tech.fimirtsp.network.ConnectivityMonitor
 import com.b2tech.fimirtsp.settings.SettingsRepository
 import com.b2tech.fimirtsp.settings.StreamSettings
+import com.b2tech.fimirtsp.settings.VideoCodecPref
 import com.b2tech.fimirtsp.util.LogSanitizer
 import com.b2tech.fimirtsp.util.ScreenUtils
 import com.b2tech.fimirtsp.validation.StreamUrlValidator
@@ -65,6 +66,10 @@ class StreamService : Service(), StreamEngine.Listener {
 
         private val _statsBps: MutableStateFlow<Long> = MutableStateFlow(0L)
         val statsBps: StateFlow<Long> = _statsBps.asStateFlow()
+
+        /** Codec que o encoder aceitou nesta sessão; null fora de transmissão. */
+        private val _activeCodec: MutableStateFlow<VideoCodecPref?> = MutableStateFlow(null)
+        val activeCodec: StateFlow<VideoCodecPref?> = _activeCodec.asStateFlow()
 
         private val _reconnectAttempts: MutableStateFlow<Int> = MutableStateFlow(0)
         val reconnectAttempts: StateFlow<Int> = _reconnectAttempts.asStateFlow()
@@ -185,9 +190,15 @@ class StreamService : Service(), StreamEngine.Listener {
             user = settings.rtspUser,
             password = settings.rtspPassword,
             fallbackSizes = fallback,
+            codec = settings.videoCodec,
         )
+        _activeCodec.value = null
         when (val result = engine.prepare(request)) {
             is StreamEngine.PrepareResult.Ok -> {
+                _activeCodec.value = result.codec
+                if (result.codec != settings.videoCodec) {
+                    Log.w(TAG, "Sem encoder ${settings.videoCodec.label}: transmitindo em ${result.codec.label}")
+                }
                 transition(StreamEvent.PrepareSuccess)
                 startForegroundNotification(getString(R.string.status_connecting))
                 manualStop = false
@@ -221,6 +232,7 @@ class StreamService : Service(), StreamEngine.Listener {
     }
 
     private fun stopForegroundAndSelf() {
+        _activeCodec.value = null
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
