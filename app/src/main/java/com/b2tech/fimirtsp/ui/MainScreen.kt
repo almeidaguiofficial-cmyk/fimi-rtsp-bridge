@@ -47,8 +47,10 @@ import androidx.compose.ui.unit.dp
 import com.b2tech.fimirtsp.settings.QualityPreset
 import com.b2tech.fimirtsp.settings.RtspTransport
 import com.b2tech.fimirtsp.settings.StreamSettings
+import com.b2tech.fimirtsp.settings.VideoCodecPref
 import com.b2tech.fimirtsp.settings.VideoResolution
 import com.b2tech.fimirtsp.streaming.BitrateMode
+import com.b2tech.fimirtsp.streaming.CodecPlan
 import com.b2tech.fimirtsp.streaming.EncoderChoice
 import com.b2tech.fimirtsp.streaming.StreamState
 import com.b2tech.fimirtsp.validation.StreamUrlValidator
@@ -64,6 +66,7 @@ fun MainScreen(
     onFpsChange: (Int) -> Unit,
     onBitrateChange: (Int) -> Unit,
     onApplyMaxQuality: () -> Unit,
+    onCodecChange: (VideoCodecPref) -> Unit,
     onTransportChange: (RtspTransport) -> Unit,
     onAuthorizeAndStart: () -> Unit,
     onStop: () -> Unit,
@@ -93,6 +96,7 @@ fun MainScreen(
                 state = engineState,
                 bitrateBps = state.bitrateSampleBps,
                 reconnectAttempts = state.reconnectAttempts,
+                activeCodec = state.activeCodec,
                 connectivityLabel = connectivityLabel(state),
             )
 
@@ -111,11 +115,12 @@ fun MainScreen(
 
             EncodingCard(
                 settings = state.settings,
-                encoderChoice = state.encoderChoice,
+                encoderChoices = state.encoderChoices,
                 onResolutionChange = onResolutionChange,
                 onFpsChange = onFpsChange,
                 onBitrateChange = onBitrateChange,
                 onApplyMaxQuality = onApplyMaxQuality,
+                onCodecChange = onCodecChange,
                 enabled = !busy,
             )
 
@@ -139,6 +144,7 @@ private fun StatusCard(
     state: StreamState,
     bitrateBps: Long,
     reconnectAttempts: Int,
+    activeCodec: VideoCodecPref?,
     connectivityLabel: String,
 ) {
     val label = when (state) {
@@ -173,6 +179,7 @@ private fun StatusCard(
                     val secs = ((System.currentTimeMillis() - state.startedAtMillis) / 1000).coerceAtLeast(0)
                     Text("Tempo: ${formatDuration(secs)}  •  FPS alvo: ${state.fps}  •  Alvo: ${state.bitrateBps / 1_000_000.0} Mbps")
                     Text("Bitrate agora: ${bitrateBps / 1000} kbps")
+                    if (activeCodec != null) Text("Codec: ${activeCodec.label}")
                 }
                 is StreamState.Reconnecting -> Text("Próxima tentativa em ${state.nextDelayMs / 1000}s")
                 is StreamState.Error -> {
@@ -271,17 +278,18 @@ private fun ServerCard(
 @Composable
 private fun EncodingCard(
     settings: StreamSettings,
-    encoderChoice: EncoderChoice?,
+    encoderChoices: Map<VideoCodecPref, EncoderChoice?>?,
     onResolutionChange: (VideoResolution) -> Unit,
     onFpsChange: (Int) -> Unit,
     onBitrateChange: (Int) -> Unit,
     onApplyMaxQuality: () -> Unit,
+    onCodecChange: (VideoCodecPref) -> Unit,
     enabled: Boolean,
 ) {
     SectionCard(title = "Codificação") {
         if (QualityPreset.isActive(settings)) {
             Text(
-                "✓ Qualidade máxima: 1080p • 30 fps • 8 Mbps constante (CBR)",
+                "✓ Qualidade máxima: 1080p • 30 fps • 8 Mbps CBR • H.265",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -291,7 +299,7 @@ private fun EncodingCard(
                 enabled = enabled,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("Usar qualidade máxima (1080p • 30 fps • 8 Mbps CBR)")
+                Text("Usar qualidade máxima (1080p • 30 fps • 8 Mbps CBR • H.265)")
             }
         }
         Text(
@@ -331,16 +339,51 @@ private fun EncodingCard(
             steps = 22,
             enabled = enabled,
         )
-        if (encoderChoice != null) BitrateModeNote(encoderChoice)
+        Text("Codec", style = MaterialTheme.typography.labelLarge)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            VideoCodecPref.entries.forEach { codec ->
+                FilterChip(
+                    selected = settings.videoCodec == codec,
+                    onClick = { onCodecChange(codec) },
+                    enabled = enabled,
+                    label = { Text(codec.label) },
+                )
+            }
+        }
+        if (settings.videoCodec == VideoCodecPref.H265) {
+            Text(
+                "H.265 entrega imagem melhor no mesmo bitrate. Por RTMP o servidor precisa " +
+                    "aceitar Enhanced RTMP (YouTube e MediaMTX recentes aceitam; Facebook e " +
+                    "servidores antigos recusam). Se não conectar, volte para H.264. " +
+                    "A aba Assistir só abre H.265 por RTSP.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        if (encoderChoices != null) {
+            val expected = CodecPlan.expected(
+                settings.videoCodec,
+                hevcAvailable = encoderChoices[VideoCodecPref.H265] != null,
+            )
+            if (expected != settings.videoCodec) {
+                Text(
+                    "⚠ Este aparelho não tem encoder ${settings.videoCodec.label}: " +
+                        "a transmissão vai sair em ${expected.label}.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            encoderChoices[expected]?.let { BitrateModeNote(it, expected) }
+        }
     }
 }
 
 @Composable
-private fun BitrateModeNote(choice: EncoderChoice) {
+private fun BitrateModeNote(choice: EncoderChoice, codec: VideoCodecPref) {
     when {
         choice.mode == BitrateMode.VBR -> Text(
-            "⚠ Este aparelho não tem encoder H.264 com bitrate constante (CBR): " +
-                "a taxa vai variar com a cena. Encoder: ${choice.name}",
+            "⚠ Este aparelho não tem encoder ${codec.label} com bitrate constante (CBR): " +
+                "a taxa vai variar com a cena. Encoder: ${choice.name}" +
+                if (codec == VideoCodecPref.H265) ". Para manter CBR, use H.264." else "",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.error,
         )

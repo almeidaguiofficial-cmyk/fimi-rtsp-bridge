@@ -16,8 +16,11 @@ Testado com o padrão de captura já em produção no Skywatch Cast (RootEncoder
 - **Bitrate constante (CBR)**: o encoder é escolhido com prioridade para CBR
   (hardware CBR > software CBR > hardware > software). O cartão *Codificação*
   mostra qual encoder o aparelho usa e avisa em vermelho se nenhum suporta CBR.
-- **Qualidade máxima** com um toque: 1920×1080, 30 fps, 8 Mbps constantes.
+- **Qualidade máxima** com um toque: 1920×1080, 30 fps, 8 Mbps constantes, em H.265.
   Pede upload estável acima de 10 Mbps; no 4G fraco, baixe o bitrate.
+- **H.265 (HEVC)** opcional: imagem melhor no mesmo bitrate. Usa só encoder de
+  hardware (CBR quando o chip suporta); sem HEVC no aparelho, cai sozinho para H.264
+  e a tela avisa. Pelo RTMP vai como Enhanced RTMP (`hvc1`).
 - Publica em `rtsp://SERVIDOR:8554/fimi` **ou** `rtmp://SERVIDOR:1935/live/ID?key=...`
   (o app escolhe RTSP/RTMP pelo esquema da URL; `rtsps://` e `rtmps://` também valem).
 - Roda em **Foreground Service tipo mediaProjection**, notificação persistente
@@ -192,6 +195,12 @@ Wi-Fi como padrão. Desligue o hotspot se quiser garantir 4G/5G, ou vice-versa.
 
 ## Limitações
 
+- **H.265 depende do servidor**: pelo RTMP só passa em servidor com Enhanced RTMP
+  (YouTube e MediaMTX recentes). Facebook e servidores antigos recusam: use H.264.
+  RTSP e SRT levam H.265 normalmente.
+- **A aba Assistir não abre H.265 por RTMP**: o extrator FLV do Media3 só aceita
+  H.264. Para assistir H.265, use o endereço RTSP do servidor.
+
 - **Android < 14**: o consentimento de MediaProjection captura a tela inteira
   — se você abrir notificações, elas aparecem no vídeo. Habitue-se ao “não
   perturbe” durante voo.
@@ -232,7 +241,8 @@ app/
 │   ├── RootEncoderStreamEngine.kt    # RootEncoder GenericStream (rtsp/rtsps/rtmp/rtmps)
 │   ├── StreamState.kt                # Máquina de estados (publicador)
 │   ├── EncoderSelection.kt           # Regra CBR_PRIORITY (pura, testada)
-│   ├── EncoderProbe.kt               # Lê os encoders H.264 do aparelho
+│   ├── EncoderProbe.kt               # Lê os encoders H.264/H.265 do aparelho
+│   ├── CodecPlan.kt                  # H.265 → H.264, HEVC só em hardware (puro, testado)
 │   └── Backoff.kt                    # 1,2,4,8,15s (compartilhado com o player)
 ├── player/
 │   ├── PlayerState.kt                # Máquina de estados do reprodutor
@@ -240,6 +250,7 @@ app/
 │   └── PlayerMediaSources.kt         # rtmp→Progressive/FLV, rtsp→RTSP TCP
 ├── network/ConnectivityMonitor.kt
 ├── settings/SettingsRepository.kt    # DataStore
+├── settings/QualityPreset.kt         # Qualidade máxima (1080p30, 8 Mbps, H.265)
 ├── validation/StreamUrlValidator.kt  # rtsp/rtsps/rtmp/rtmps (+ restrição do player)
 └── util/{LogSanitizer,ScreenUtils}.kt
 ```
@@ -269,7 +280,8 @@ Cobrem:
 - `PlayerErrorClassifierTest` — retry vs. fatal por código de erro do Media3.
 - `EncoderSelectionTest` — prioridade CBR na escolha do encoder e modo CBR/VBR.
 - `FimiLauncherTest` — detecção do app FIMI de todos os modelos (pacote e nome).
-- `QualityPresetTest` — modo qualidade máxima (1080p, 30 fps, 8 Mbps) sem tocar na URL.
+- `QualityPresetTest` — modo qualidade máxima (1080p, 30 fps, 8 Mbps, H.265) sem tocar na URL.
+- `CodecPlanTest` — H.265 cai para H.264 sem encoder, nunca usa HEVC de software.
 - `LogSanitizerTest` — senha nunca vaza em log ou toast (inclui `?pass=` do RTMP).
 - `BitrateBoundsTest` — clamp de bitrate 300 kbps..20 Mbps.
 

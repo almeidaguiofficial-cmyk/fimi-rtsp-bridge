@@ -3,6 +3,7 @@ package com.b2tech.fimirtsp
 import com.b2tech.fimirtsp.settings.QualityPreset
 import com.b2tech.fimirtsp.settings.RtspTransport
 import com.b2tech.fimirtsp.settings.StreamSettings
+import com.b2tech.fimirtsp.settings.VideoCodecPref
 import com.b2tech.fimirtsp.settings.VideoResolution
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -22,11 +23,12 @@ class QualityPresetTest {
         stopOnTaskRemoved = false,
     )
 
-    @Test fun aplica_1080p_30fps_8mbps() {
+    @Test fun aplica_1080p_30fps_8mbps_h265() {
         val s = QualityPreset.applyTo(base)
         assertEquals(VideoResolution.R1080P, s.resolution)
         assertEquals(30, s.fps)
         assertEquals(8_000_000, s.bitrateBps)
+        assertEquals(VideoCodecPref.H265, s.videoCodec)
     }
 
     @Test fun nao_mexe_em_url_credenciais_nem_transporte() {
@@ -38,13 +40,14 @@ class QualityPresetTest {
         assertEquals(base.stopOnTaskRemoved, s.stopOnTaskRemoved)
     }
 
-    @Test fun fica_ativo_so_com_os_tres_valores() {
+    @Test fun fica_ativo_so_com_os_quatro_valores() {
         val max = QualityPreset.applyTo(base)
         assertTrue(QualityPreset.isActive(max))
         assertFalse(QualityPreset.isActive(base))
         assertFalse(QualityPreset.isActive(max.copy(fps = 24)))
         assertFalse(QualityPreset.isActive(max.copy(bitrateBps = 7_500_000)))
         assertFalse(QualityPreset.isActive(max.copy(resolution = VideoResolution.R720P)))
+        assertFalse(QualityPreset.isActive(max.copy(videoCodec = VideoCodecPref.H264)))
     }
 
     @Test fun bitrate_do_preset_dentro_dos_limites() {

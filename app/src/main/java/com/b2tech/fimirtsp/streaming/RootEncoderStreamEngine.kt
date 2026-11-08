@@ -6,8 +6,10 @@ import android.media.projection.MediaProjectionManager
 import android.os.Handler
 import android.os.Looper
 import com.b2tech.fimirtsp.settings.RtspTransport
+import com.b2tech.fimirtsp.settings.VideoCodecPref
 import com.b2tech.fimirtsp.util.LogSanitizer
 import com.pedro.common.ConnectChecker
+import com.pedro.common.VideoCodec
 import com.pedro.encoder.input.sources.audio.NoAudioSource
 import com.pedro.encoder.input.sources.video.NoVideoSource
 import com.pedro.encoder.input.sources.video.ScreenSource
@@ -86,12 +88,6 @@ class RootEncoderStreamEngine(
 
         try { stream.getGlInterface().setForceRender(true, request.fps) } catch (_: Throwable) {}
 
-        // Bitrate constante: o padrão da lib prefere encoder de hardware SEM CBR a um de
-        // software COM CBR, e nesse caso transmite em VBR calado. CBR_PRIORITY inverte
-        // isso (hardware CBR > software CBR > hardware > software). Precisa vir antes do
-        // prepareVideo, que é onde o encoder é escolhido. Ver EncoderSelection.
-        stream.forceCodecType(CodecUtil.CodecType.CBR_PRIORITY, CodecUtil.CodecType.FIRST_COMPATIBLE_FOUND)
-
         val client = stream.getStreamClient()
         client.setOnlyVideo(true)
         client.setProtocol(if (request.transport == RtspTransport.UDP) Protocol.UDP else Protocol.TCP)
@@ -112,21 +108,45 @@ class RootEncoderStreamEngine(
             addAll(request.fallbackSizes)
         }.distinct()
 
+        // H.265 primeiro quando pedido; sem encoder HEVC (ou se ele recusar todas as
+        // resoluções) cai para H.264 em vez de derrubar a transmissão. setVideoCodec só
+        // grava o tipo (encoder e clients) enquanto não transmite, e o FourCC "hvc1" do
+        // Enhanced RTMP vai no connect.
         var accepted: Pair<Int, Int>? = null
-        for ((w, h) in candidates) {
-            val ok = try {
-                stream.prepareVideo(w, h, currentBitrate, currentFps, iFrameInterval = 1, rotation = 0)
-            } catch (_: IllegalArgumentException) {
-                false
-            } catch (_: IllegalStateException) {
-                false
+        var acceptedCodec: VideoCodecPref? = null
+        codecs@ for (codec in CodecPlan.attemptOrder(request.codec)) {
+            try {
+                stream.setVideoCodec(codec.toLibCodec())
+            } catch (_: Throwable) {
+                continue
             }
-            if (ok) {
-                accepted = w to h
-                break
+            // Bitrate constante: o padrão da lib prefere encoder de hardware SEM CBR a um de
+            // software COM CBR, e nesse caso transmite em VBR calado. CBR_PRIORITY inverte
+            // isso (hardware CBR > software CBR > hardware > software). H.265 fica só no
+            // hardware (CodecPlan.hardwareOnly). Precisa vir antes do prepareVideo, que é
+            // onde o encoder é escolhido. Ver EncoderSelection.
+            val codecType = if (CodecPlan.hardwareOnly(codec)) {
+                CodecUtil.CodecType.HARDWARE
+            } else {
+                CodecUtil.CodecType.CBR_PRIORITY
+            }
+            stream.forceCodecType(codecType, CodecUtil.CodecType.FIRST_COMPATIBLE_FOUND)
+            for ((w, h) in candidates) {
+                val ok = try {
+                    stream.prepareVideo(w, h, currentBitrate, currentFps, iFrameInterval = 1, rotation = 0)
+                } catch (_: IllegalArgumentException) {
+                    false
+                } catch (_: IllegalStateException) {
+                    false
+                }
+                if (ok) {
+                    accepted = w to h
+                    acceptedCodec = codec
+                    break@codecs
+                }
             }
         }
-        if (accepted == null) {
+        if (accepted == null || acceptedCodec == null) {
             return StreamEngine.PrepareResult.Failed("Nenhuma resolução aceita pelo encoder")
         }
         encWidth = accepted.first
@@ -159,7 +179,7 @@ class RootEncoderStreamEngine(
 
         return try {
             stream.changeVideoSource(source)
-            StreamEngine.PrepareResult.Ok(encWidth, encHeight)
+            StreamEngine.PrepareResult.Ok(encWidth, encHeight, acceptedCodec)
         } catch (t: Throwable) {
             mp.stop()
             mediaProjection = null
@@ -206,6 +226,11 @@ class RootEncoderStreamEngine(
     }
 
     override fun isStreaming(): Boolean = streamLazy.isInitialized() && stream.isStreaming
+
+    private fun VideoCodecPref.toLibCodec(): VideoCodec = when (this) {
+        VideoCodecPref.H264 -> VideoCodec.H264
+        VideoCodecPref.H265 -> VideoCodec.H265
+    }
 
     override fun onOrientationChanged(landscape: Boolean) {
         val src = screenSource ?: return

@@ -67,6 +67,7 @@ class MainActivity : ComponentActivity() {
                             onFpsChange = viewModel::updateFps,
                             onBitrateChange = viewModel::updateBitrateBps,
                             onApplyMaxQuality = viewModel::applyMaxQuality,
+                            onCodecChange = viewModel::updateVideoCodec,
                             onTransportChange = viewModel::updateTransport,
                             onAuthorizeAndStart = { authorizeAndStart(uiState.urlIsValid) },
                             onStop = { viewModel.stopStreaming(application) },
